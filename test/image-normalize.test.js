@@ -20,6 +20,7 @@ const { CAPS } = require('../lib/v1/input/caps');
 const FIX = path.join(__dirname, 'fixtures');
 const TIFF = fs.readFileSync(path.join(FIX, 'multi-frame.tif')); // 3 frames, brightness ↑
 const GIF = fs.readFileSync(path.join(FIX, 'two-frame.gif')); //  2 frames, brightness ↑
+const BMP = fs.readFileSync(path.join(FIX, 'sample.bmp')); //    solid teal 24×18
 
 const OPTS = { maxPixels: CAPS.MAX_OUTPUT_PIXELS, maxDim: CAPS.RASTER_MAX_DIM };
 
@@ -98,4 +99,60 @@ test('normalizeToFrames: an unknown sniffed type throws a typed error', async ()
     /unsupported_image_type/,
     'unsupported type is rejected, not silently normalized',
   );
+});
+
+// --- Task 2: HEIC (heic-convert) + BMP (@vingle/bmp-js) decode → sharp ------
+
+test('normalizeToFrames: BMP → single normalized PNG via @vingle/bmp-js → sharp (real, host)', async () => {
+  // BMP is decoded FOR REAL on the host: @vingle/bmp-js → raw RGBA → sharp.
+  // sharp() can NOT read a BMP buffer directly (prebuilt libvips lacks BMP), so
+  // this asserts the decode-first handoff actually produces a valid PNG.
+  const frames = await normalizeToFrames(BMP, 'image/bmp', OPTS);
+  assert.equal(frames.length, 1, 'BMP yields a single frame');
+  const meta = await sharp(frames[0]).metadata();
+  assert.equal(meta.format, 'png', 'BMP normalized to a valid PNG');
+  assert.equal(meta.width, 24, 'BMP width preserved');
+  assert.equal(meta.height, 18, 'BMP height preserved');
+});
+
+test('normalizeToFrames: BMP path still applies limitInputPixels (no OOM)', async () => {
+  // Encode a larger BMP, then cap maxPixels below its pixel count — the sharp
+  // step (post-decode) must reject via limitInputPixels, proving the guard is on
+  // the BMP branch too.
+  const bmp = require('@vingle/bmp-js');
+  const W = 300, H = 300;
+  const data = Buffer.alloc(W * H * 4, 128);
+  const bigBmp = bmp.encode({ data, width: W, height: H }).data;
+  await assert.rejects(
+    () => normalizeToFrames(bigBmp, 'image/bmp', { maxPixels: 1000, maxDim: 50 }),
+    /pixel limit/i,
+    'BMP decode carries limitInputPixels',
+  );
+});
+
+test('normalizeToFrames: HEIC → single normalized PNG (host-asserted if a real HEIC fixture exists, else Docker smoke A5)', async (t) => {
+  // heic-convert is WASM and decodes on host, but producing a real HEIC on the
+  // host is impractical (no host encoder), so this is skip-guarded on the
+  // presence of a real fixture. Real HEIC decode is validated in the 03-07
+  // Docker smoke (STATE risk-flag A5). The host suite must NOT hard-depend on a
+  // HEIC that cannot be produced here.
+  const heicPath = path.join(FIX, 'sample.heic');
+  if (!fs.existsSync(heicPath)) {
+    t.skip('no real HEIC fixture on host — real decode validated in 03-07 Docker smoke (A5)');
+    return;
+  }
+  const frames = await normalizeToFrames(fs.readFileSync(heicPath), 'image/heic', OPTS);
+  assert.equal(frames.length, 1, 'HEIC yields a single frame');
+  const meta = await sharp(frames[0]).metadata();
+  assert.equal(meta.format, 'png', 'HEIC normalized to a valid PNG');
+});
+
+test('image-normalize source: HEIC/BMP are DECODED FIRST, never sharp()-ed raw', () => {
+  // Structural guard for the acceptance criterion "no sharp(rawHeic/rawBmp)
+  // anywhere": the module must go through heic-convert / @vingle/bmp-js decoders
+  // before handing pixels to sharp.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'v1', 'input', 'image-normalize.js'), 'utf8');
+  assert.match(src, /require\('heic-convert'\)/, 'HEIC decoded via heic-convert');
+  assert.match(src, /require\('@vingle\/bmp-js'\)/, 'BMP decoded via @vingle/bmp-js');
+  assert.match(src, /bmp\.decode\(/, 'BMP raw pixels obtained before sharp');
 });
