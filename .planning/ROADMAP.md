@@ -51,7 +51,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md — Pure config-driven confidence heuristic + declarative cascade config (10-fixture TDD suite)
 - [x] 02-02-PLAN.md — Thread job AbortSignal into both providers + enable ocr.space overlay word-count signal
-- [ ] 02-03-PLAN.md — Cascade runner + trace: walk/fall-through/best-so-far/budget/quota short-circuit (fall-through matrix TDD)
+- [x] 02-03-PLAN.md — Cascade runner + trace: walk/fall-through/best-so-far/budget/quota short-circuit (fall-through matrix TDD)
 - [ ] 02-04-PLAN.md — Wire cascade into worker + router: profiles, forced-engine bypass/422, trace, profiles discovery
 
 ### Phase 3: Input Pipeline
@@ -86,6 +86,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-07-23 |
-| 2. Cascade Router | 2/4 | In Progress|  |
+| 2. Cascade Router | 3/4 | In Progress|  |
 | 3. Input Pipeline | 0/TBD | Not started | - |
 | 4. Structured Extraction | 0/TBD | Not started | - |

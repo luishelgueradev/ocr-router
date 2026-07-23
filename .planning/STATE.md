@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-23T21:05:48.602Z"
+last_updated: "2026-07-23T21:14:53.219Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 25
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-23)
 ## Current Position
 
 Phase: 2 (Cascade Router) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-07-23
 
-Progress: [███████░░░] 71%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [███████░░░] 71%
 | Phase 1 P01-03 | 7 | 2 tasks | 5 files |
 | Phase 02-cascade-router P01 | 7min | 3 tasks | 5 files |
 | Phase 02-cascade-router P02 | 2min | 3 tasks | 4 files |
+| Phase 2 P03 | 4min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,8 @@ Recent decisions affecting current work:
 - [Phase 02]: Confidence heuristic is a pure env-tunable function; threshold numbers provisional pending live-key calibration (deferred ops)
 - [Phase ?]: Job AbortSignal composed with per-engine timeout via AbortSignal.any in ocr.space; ollama axios gets {signal}; provider aborts fall through as ok:false (JOB-04)
 - [Phase ?]: ocr.space overlay returns scalar overlay.wordCount+HasOverlay+ocrExitCode only, no fabricated confidence or raw geometry (D-03 amended)
+- [Phase 2]: Cascade runner short-circuits Ollama quota across same-provider tiers, returning best-so-far (D-12)
+- [Phase 2]: One authoritative job deadline composed via AbortSignal.any; per-engine timeout = min(perEngineMs, remaining) (JOB-04)
 
 ### Pending Todos
 
@@ -97,6 +100,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-23T21:05:32.999Z
+Last session: 2026-07-23T21:13:37.269Z
 Stopped at: Phase 2 context gathered
 Resume file: None

@@ -21,20 +21,20 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 ### Jobs & Response Envelope
 
 - [x] **JOB-01**: The job result envelope is page-aware from day one — results are returned as a `pages[]` array plus concatenated text, even for a single-image job
-- [ ] **JOB-02**: Each job records full cascade traceability: engines attempted, winning engine, per-engine timing, confidence, and a `low_confidence` flag when no engine cleared threshold
+- [x] **JOB-02**: Each job records full cascade traceability: engines attempted, winning engine, per-engine timing, confidence, and a `low_confidence` flag when no engine cleared threshold
 - [x] **JOB-03**: Completed/failed jobs are swept from the in-memory store after a configurable TTL so the process does not leak memory
 - [x] **JOB-04**: Each job honors a single authoritative timeout; a hung provider or subprocess is aborted rather than wedging the worker
 
 ### Cascade Routing
 
-- [ ] **CASC-01**: For a request the router walks an ordered chain of engines (ocr.space → Gemini 3 Flash → Gemma 4 31B → Qwen3-VL 235B) and returns the first result that passes quality
-- [ ] **CASC-02**: The router falls through to the next engine on hard failure (error/timeout/5xx)
+- [x] **CASC-01**: For a request the router walks an ordered chain of engines (ocr.space → Gemini 3 Flash → Gemma 4 31B → Qwen3-VL 235B) and returns the first result that passes quality
+- [x] **CASC-02**: The router falls through to the next engine on hard failure (error/timeout/5xx)
 - [x] **CASC-03**: The router falls through on low-confidence output using a multi-signal heuristic (empty/short text, non-printable/garbage ratio, and — when available — ocr.space overlay score)
-- [ ] **CASC-04**: When no engine clears the threshold, the job returns the best result obtained, marked `low_confidence: true` (never loses the work)
+- [x] **CASC-04**: When no engine clears the threshold, the job returns the best result obtained, marked `low_confidence: true` (never loses the work)
 - [ ] **CASC-05**: Client selects behavior by named profile (e.g. `fast`/`balanced`/`quality`); an unspecified request uses the default profile
 - [ ] **CASC-06**: Client can force a specific engine/model, bypassing the cascade (capability-validated escape hatch)
-- [ ] **CASC-07**: The router skips engines whose API key/config is absent and still serves with whatever engines are present; it fails closed only if zero engines are configured
-- [ ] **CASC-08**: The cascade is bounded by max-tier, max-attempts, and a cumulative time budget so a request cannot run away in cost/latency
+- [x] **CASC-07**: The router skips engines whose API key/config is absent and still serves with whatever engines are present; it fails closed only if zero engines are configured
+- [x] **CASC-08**: The cascade is bounded by max-tier, max-attempts, and a cumulative time budget so a request cannot run away in cost/latency
 - [x] **CASC-09**: Routing chains, profiles, thresholds, and engine capabilities are declarative config (data), not hard-coded branches
 
 ### Input Processing
@@ -115,16 +115,16 @@ Which phases cover which requirements. Populated during roadmap creation.
 | OPS-03 | Phase 1 | Complete |
 | OPS-04 | Phase 1 | Complete |
 | OPS-05 | Phase 1 | Complete |
-| CASC-01 | Phase 2 | Pending |
-| CASC-02 | Phase 2 | Pending |
+| CASC-01 | Phase 2 | Complete |
+| CASC-02 | Phase 2 | Complete |
 | CASC-03 | Phase 2 | Complete |
-| CASC-04 | Phase 2 | Pending |
+| CASC-04 | Phase 2 | Complete |
 | CASC-05 | Phase 2 | Pending |
 | CASC-06 | Phase 2 | Pending |
-| CASC-07 | Phase 2 | Pending |
-| CASC-08 | Phase 2 | Pending |
+| CASC-07 | Phase 2 | Complete |
+| CASC-08 | Phase 2 | Complete |
 | CASC-09 | Phase 2 | Complete |
-| JOB-02 | Phase 2 | Pending |
+| JOB-02 | Phase 2 | Complete |
 | JOB-04 | Phase 2 | Complete |
 | INP-03 | Phase 3 | Pending |
 | INP-04 | Phase 3 | Pending |
