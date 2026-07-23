@@ -94,7 +94,9 @@ app.post('/api/ocr', async (req, res) => {
     }
     return res.json(result);
   } catch (e) {
-    logger.error({ msg: 'Error interno en /api/ocr' });
+    // Log the actual error message so the legacy admin path is debuggable in
+    // production. pino redaction already protects sensitive fields (MR-04).
+    logger.error({ err: e && e.message }, 'Error interno en /api/ocr');
     return res.status(500).json({ ok: false, error: 'Error interno' });
   }
 });
@@ -180,6 +182,12 @@ async function gracefulShutdown(signal) {
   // has finished writing. Previously `httpServer.close()` was fire-and-forget
   // and `process.exit(0)` killed in-flight 202 responses mid-write.
   const httpClosed = new Promise((resolve) => httpServer.close(resolve));
+
+  // LR-02 — httpServer.close() waits for idle keep-alive sockets (Caddy holds these)
+  // to time out, so "graceful" shutdown would otherwise routinely stall until the 38s
+  // hard-kill backstop. Drop idle connections now so only in-flight responses hold
+  // httpClosed open (Node ≥18).
+  if (typeof httpServer.closeIdleConnections === 'function') httpServer.closeIdleConnections();
 
   await drainAndCancel(35_000);    // D-10: 35-second hard window for job drain
   await httpClosed;                // CR-03: ensure no response is truncated
