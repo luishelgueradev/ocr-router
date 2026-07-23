@@ -9,20 +9,20 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 
 ### API & Auth
 
-- [ ] **API-01**: Client authenticates every `/v1` request with a shared bearer token; missing/invalid token is rejected `401`
-- [ ] **API-02**: Service refuses to start when `API_TOKEN` is missing or left at the placeholder value (fail-closed)
-- [ ] **API-03**: Client submits a document to `POST /v1/ocr` (multipart) and receives `202` with a `job_id` and `status_url`
-- [ ] **API-04**: Client polls `GET /v1/jobs/:id` and receives a JSON envelope with a terminal status (`queued`/`processing`/`succeeded`/`failed`) and, on failure, a typed `error` object
-- [ ] **API-05**: Client lists available engines and named profiles via `GET /v1/models` (and profiles discovery)
-- [ ] **API-06**: Client can check service liveness via unauthenticated `GET /v1/health`
-- [ ] **API-07**: Oversized uploads and unsupported types are rejected with explicit `413`/`400`/`422` and a clear error code (page/size limits enforced)
-- [ ] **API-08**: When the job queue is full the service returns `503 server_busy` with `Retry-After` (backpressure, no unbounded growth)
+- [x] **API-01**: Client authenticates every `/v1` request with a shared bearer token; missing/invalid token is rejected `401`
+- [x] **API-02**: Service refuses to start when `API_TOKEN` is missing or left at the placeholder value (fail-closed)
+- [x] **API-03**: Client submits a document to `POST /v1/ocr` (multipart) and receives `202` with a `job_id` and `status_url`
+- [x] **API-04**: Client polls `GET /v1/jobs/:id` and receives a JSON envelope with a terminal status (`queued`/`processing`/`succeeded`/`failed`) and, on failure, a typed `error` object
+- [x] **API-05**: Client lists available engines and named profiles via `GET /v1/models` (and profiles discovery)
+- [x] **API-06**: Client can check service liveness via unauthenticated `GET /v1/health`
+- [x] **API-07**: Oversized uploads and unsupported types are rejected with explicit `413`/`400`/`422` and a clear error code (page/size limits enforced)
+- [x] **API-08**: When the job queue is full the service returns `503 server_busy` with `Retry-After` (backpressure, no unbounded growth)
 
 ### Jobs & Response Envelope
 
-- [ ] **JOB-01**: The job result envelope is page-aware from day one — results are returned as a `pages[]` array plus concatenated text, even for a single-image job
+- [x] **JOB-01**: The job result envelope is page-aware from day one — results are returned as a `pages[]` array plus concatenated text, even for a single-image job
 - [ ] **JOB-02**: Each job records full cascade traceability: engines attempted, winning engine, per-engine timing, confidence, and a `low_confidence` flag when no engine cleared threshold
-- [ ] **JOB-03**: Completed/failed jobs are swept from the in-memory store after a configurable TTL so the process does not leak memory
+- [x] **JOB-03**: Completed/failed jobs are swept from the in-memory store after a configurable TTL so the process does not leak memory
 - [ ] **JOB-04**: Each job honors a single authoritative timeout; a hung provider or subprocess is aborted rather than wedging the worker
 
 ### Cascade Routing
@@ -39,8 +39,8 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 
 ### Input Processing
 
-- [ ] **INP-01**: Service accepts raster images (PNG/JPEG/WebP) and routes them through the cascade
-- [ ] **INP-02**: Input type is determined by authoritative content sniffing (magic bytes), not the client-declared content-type; spoofed/SVG-with-script inputs are rejected
+- [x] **INP-01**: Service accepts raster images (PNG/JPEG/WebP) and routes them through the cascade
+- [x] **INP-02**: Input type is determined by authoritative content sniffing (magic bytes), not the client-declared content-type; spoofed/SVG-with-script inputs are rejected
 - [ ] **INP-03**: Native (text-bearing) PDFs have their embedded text extracted per page without OCR (cheap fast path)
 - [ ] **INP-04**: Scanned PDFs are rendered to images page-by-page and each page is routed through the cascade
 - [ ] **INP-05**: Additional image formats (TIFF multipage, HEIC, BMP, GIF) are normalized before routing
@@ -58,9 +58,9 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 
 - [ ] **OPS-01**: The service runs as a Docker/Compose stack on `node:22-bookworm-slim` with the required system packages (`poppler-utils`)
 - [ ] **OPS-02**: Caddy fronts the service with automatic HTTPS and routes only `/v1/*` publicly
-- [ ] **OPS-03**: The admin surface binds only to the Tailscale interface, never `0.0.0.0` (fail-closed guard)
-- [ ] **OPS-04**: In-flight jobs drain on SIGTERM (graceful shutdown) within a bounded window
-- [ ] **OPS-05**: Requests and jobs are traceable via structured logs with request/job IDs; secrets are never logged
+- [x] **OPS-03**: The admin surface binds only to the Tailscale interface, never `0.0.0.0` (fail-closed guard)
+- [x] **OPS-04**: In-flight jobs drain on SIGTERM (graceful shutdown) within a bounded window
+- [x] **OPS-05**: Requests and jobs are traceable via structured logs with request/job IDs; secrets are never logged
 - [ ] **OPS-06**: Native-decode dependencies are pinned to CVE-fixed versions (`sharp>=0.35.0`) and scanned in CI
 
 ## v2 Requirements
@@ -98,23 +98,23 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| API-01 | Phase 1 | Pending |
-| API-02 | Phase 1 | Pending |
-| API-03 | Phase 1 | Pending |
-| API-04 | Phase 1 | Pending |
-| API-05 | Phase 1 | Pending |
-| API-06 | Phase 1 | Pending |
-| API-07 | Phase 1 | Pending |
-| API-08 | Phase 1 | Pending |
-| JOB-01 | Phase 1 | Pending |
-| JOB-03 | Phase 1 | Pending |
-| INP-01 | Phase 1 | Pending |
-| INP-02 | Phase 1 | Pending |
+| API-01 | Phase 1 | Complete |
+| API-02 | Phase 1 | Complete |
+| API-03 | Phase 1 | Complete |
+| API-04 | Phase 1 | Complete |
+| API-05 | Phase 1 | Complete |
+| API-06 | Phase 1 | Complete |
+| API-07 | Phase 1 | Complete |
+| API-08 | Phase 1 | Complete |
+| JOB-01 | Phase 1 | Complete |
+| JOB-03 | Phase 1 | Complete |
+| INP-01 | Phase 1 | Complete |
+| INP-02 | Phase 1 | Complete |
 | OPS-01 | Phase 1 | Pending |
 | OPS-02 | Phase 1 | Pending |
-| OPS-03 | Phase 1 | Pending |
-| OPS-04 | Phase 1 | Pending |
-| OPS-05 | Phase 1 | Pending |
+| OPS-03 | Phase 1 | Complete |
+| OPS-04 | Phase 1 | Complete |
+| OPS-05 | Phase 1 | Complete |
 | CASC-01 | Phase 2 | Pending |
 | CASC-02 | Phase 2 | Pending |
 | CASC-03 | Phase 2 | Pending |

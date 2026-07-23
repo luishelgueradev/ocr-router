@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. The stack runs via Docker Compose on `node:22-bookworm-slim` behind Caddy (automatic HTTPS, only `/v1/*` public, admin bound to Tailscale, never `0.0.0.0`), drains in-flight jobs on SIGTERM, and emits structured logs with request/job IDs and no secrets.
 **Plans**: 3 plans
 Plans:
-- [ ] 01-01-PLAN.md — Walking skeleton: port app runtime (lib/** + server.js) + 3 adaptations (succeeded/file/envelope) + default-engine resolver; prove the OCR slice end-to-end
+- [x] 01-01-PLAN.md — Walking skeleton: port app runtime (lib/** + server.js) + 3 adaptations (succeeded/file/envelope) + default-engine resolver; prove the OCR slice end-to-end
 - [ ] 01-02-PLAN.md — Port + adapt the full node --test suite (16 files + verify-redaction) as the acceptance proof
 - [ ] 01-03-PLAN.md — Deploy stack: rewrite Dockerfile for node:22-bookworm-slim + poppler-utils + tini, adapt compose/Caddy, rewrite deploy.test.js
 
@@ -80,7 +80,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/3 | Not started | - |
+| 1. Foundation | 1/3 | In Progress|  |
 | 2. Cascade Router | 0/TBD | Not started | - |
 | 3. Input Pipeline | 0/TBD | Not started | - |
 | 4. Structured Extraction | 0/TBD | Not started | - |
