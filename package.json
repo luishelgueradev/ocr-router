@@ -1,0 +1,23 @@
+{
+  "name": "ocr-router",
+  "version": "1.0.0",
+  "description": "Dockerized document-recognition service exposed as a bearer-secured /v1 HTTP API with cascade routing (Phase 1: walking skeleton).",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "web": "node server.js",
+    "test": "node --test test/jobs.test.js test/shutdown.test.js test/worker.test.js test/deploy.test.js test/env-guards.test.js test/sniff.test.js test/errors.test.js test/modes.test.js test/upload.test.js test/models-shape.test.js test/auth.test.js test/v1-routes.test.js test/health.test.js test/concurrency.test.js test/jobs-extra.test.js test/logger-shape.test.js test/pino-http.test.js test/worker-logging.test.js test/worker-failure-logging.test.js && node --test scripts/verify-redaction.js"
+  },
+  "dependencies": {
+    "axios": "^1.16.0",
+    "bottleneck": "^2.19.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.22.1",
+    "lru-cache": "^11.5.0",
+    "multer": "^2.2.0",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "uuid": "^13.0.2"
+  }
+}

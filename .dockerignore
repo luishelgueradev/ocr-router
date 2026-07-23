@@ -1,0 +1,35 @@
+# Source control & local config
+.git
+.gitignore
+.env
+.env.local
+
+# Dependencies (rebuild inside image via npm ci)
+node_modules
+
+# Tooling / scratch dirs
+.playwright-cli
+.claude
+
+# Planning artifacts (large, irrelevant at runtime)
+.planning
+docs
+
+# Test fixtures (image binaries, OCR outputs) and dev test suite
+imagenes
+test
+test-ocr.js
+
+# Logs / OS junk
+*.log
+.DS_Store
+Thumbs.db
+
+# Build / orchestration artifacts (not needed inside the image)
+Dockerfile
+Dockerfile.*
+docker-compose.yml
+docker-compose.*.yml
+Caddyfile
+README.md
+CLAUDE.md

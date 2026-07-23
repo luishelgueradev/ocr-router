@@ -1,0 +1,5 @@
+.env
+node_modules/
+imagenes/*.txt
+docs/superpowers/specs/.cache/
+.playwright-cli/
