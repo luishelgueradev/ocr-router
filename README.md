@@ -100,3 +100,26 @@ npm test   # all suites + scripts/verify-redaction.js
 
 Deploy-artifact shape (this file, the Dockerfile, compose, Caddyfile) is covered
 by `test/deploy.test.js`. The build itself is validated by `docker compose build`.
+
+## Dependency security (OPS-06)
+
+Production dependencies are scanned with `npm audit` so a future vulnerable pin
+is caught before ship:
+
+```bash
+npm run audit   # npm audit --omit=dev --audit-level=high  → exits non-zero on any high+ advisory
+```
+
+- **Scope:** `--omit=dev` audits only what ships to production; `--audit-level=high`
+  fails the gate on `high`/`critical` advisories (moderate/low are surfaced but
+  non-blocking for this milestone).
+- **Native/WASM decoder pins:** `sharp>=0.35.0` is the CVE-fixed floor (older
+  libvips-linked builds carried advisories); `unpdf`, `heic-convert`, and
+  `@vingle/bmp-js` are pinned to the researched versions in `CLAUDE.md`.
+- **Remediation:** the pre-existing transitive advisories (axios / form-data /
+  body-parser / qs, reachable via express + multer + axios) were remediated with
+  `npm audit fix` — no Express-5 major bump (the ported v4 middleware is kept per
+  `CLAUDE.md`). The gate currently reports **0 vulnerabilities**, so there is **no
+  allowlist**. If a future advisory is genuinely unfixable, add a documented,
+  time-boxed allowlist entry here (advisory ID + rationale + review date) rather
+  than lowering the gate threshold.
