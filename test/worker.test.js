@@ -53,7 +53,11 @@ test('D-04: runJob success path produces the page-aware envelope (result.pages[0
   assert.equal(page.page, 1, 'pages[0].page must be 1');
   assert.equal(page.text, 'extracted page text', 'pages[0].text carries the OCR text');
   assert.equal(page.engine, 'ollama-qwen3-vl-235b', 'pages[0].engine records the engine id');
-  assert.equal(page.confidence, null, 'pages[0].confidence is null in Phase 1');
+  // Phase 2 (D-11 forced bypass): driving runJob with an explicit model now
+  // exercises the forced-bypass path, which COMPUTES a confidence for the
+  // winning engine — the Phase-1 `null` assertion is intentionally updated.
+  assert.equal(typeof page.confidence, 'number', 'pages[0].confidence is a computed number on the winning path');
+  assert.ok(page.confidence >= 0 && page.confidence <= 1, 'pages[0].confidence stays within [0,1]');
 
   // Top-level text === pages joined by '\n\n' (== pages[0].text for one page).
   assert.equal(done.result.text, 'extracted page text', 'result.text is the joined page text');
