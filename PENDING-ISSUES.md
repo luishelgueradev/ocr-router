@@ -22,6 +22,25 @@ Format: `[PHASE] SEVERITY — title` · status · why deferred · where.
 
 ---
 
+## Phase 2 — Cascade Router
+
+### [P2] MEDIUM — Heuristic renormalization floor (0.625) limits fall-through; needs live-key calibration (code review WR-01)
+- **Status:** deferred to the live-key calibration spike (below). NOT fixed in-phase.
+- **What:** When overlay is absent (every LLM tier), `computeConfidence` renormalizes over `{printable:0.5, length:0.3}` (wsum 0.8), so any garbage-free string floors at **0.625** — above both `fast` (0.50) and `balanced` (0.60). Consequence: the cascade will not escalate past an LLM tier that emits *any* non-garbage text, including the prompt-instructed `[ILEGIBLE]` sentinel (a 10-char "I can't read this" scores ~0.85 and passes even `quality`).
+- **Why deferred:** The fix is a **formula/threshold recalibration**, not a one-line change. Any reweighting (reviewer's option a) or short-text penalty (option b) rewrites the 34 calibrated heuristic fixtures, and choosing the right shape is exactly what the live-key spike exists to decide against real OCR outputs — guessing weights without ground-truth OCR data is as arbitrary as the current values. Note: a text-only heuristic fundamentally cannot distinguish "clean but wrong" from "clean and right"; the meaningful escalation trigger is garbage/emptiness, which IS handled. The `[ILEGIBLE]`-sentinel case (option c) is the concrete pathology to resolve.
+- **Recommendation for the spike:** decide (1) whether an `[ILEGIBLE]`-dominant result should force escalation (a sentinel/low-content gate above `absMinChars`), and (2) the printable-vs-length weighting, then move ONLY the thresholds in config once the fall-through envelope is fixed. Document the chosen shape.
+- **Where:** `lib/v1/cascade/heuristic.js` (weights/renorm), `lib/v1/cascade/config.js` (thresholds/weights), `test/fixtures/heuristic/fixtures.js`.
+
+### [P2] LOW — `maxAttempts` bound is vacuous (code review IN-03)
+- **Status:** deferred (dead config, not a bug).
+- **What:** Every profile sets `maxAttempts == chain.length` (fast 2/2, balanced 3/3, quality 4/4), so the `attempts >= maxAttempts` check can never fire before the `for` loop exhausts the chain; `stopped_reason:'max_attempts'` is unreachable.
+- **Why deferred:** Harmless (chain length already bounds attempts). Tightening it (e.g. balanced `maxAttempts:2` to stop before the most expensive tier) is a cost-tuning decision best made alongside the WR-01 live calibration.
+- **Where:** `lib/v1/cascade/config.js` (per-profile `maxAttempts`).
+
+### [P2] deferred ops checkpoints (from planning) — live-key calibration spike
+- **Live-key heuristic-threshold calibration:** confirm the provisional thresholds (`fast 0.50 / balanced 0.60 / quality 0.70`) and the WR-01 formula shape against real ocr.space + Ollama outputs on a small labeled clean/garbage/hard sample. All thresholds are env-overridable (`PROFILE_*_THRESHOLD`) so this needs no code change once the shape is fixed.
+- **Ollama Cloud quota-headroom:** confirm the real 5h / 7-day window numbers and that the `budgetMs` / chain defaults fit within them (235B burns fastest). The code already reacts to a live 429 (quota short-circuit, CR-01-fixed) rather than to fixed numbers, so this is verification, not a code blocker.
+
 ## Live-stack smoke checks (human, not automatable here)
 Recorded by the Phase 1 verifier as **informational** — require a real VPS/tailnet/providers, so they are not gaps in the automated suite:
 - Real ACME/HTTPS issuance + Tailscale admin binding on the VPS.
