@@ -29,13 +29,13 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 
 - [ ] **CASC-01**: For a request the router walks an ordered chain of engines (ocr.space → Gemini 3 Flash → Gemma 4 31B → Qwen3-VL 235B) and returns the first result that passes quality
 - [ ] **CASC-02**: The router falls through to the next engine on hard failure (error/timeout/5xx)
-- [ ] **CASC-03**: The router falls through on low-confidence output using a multi-signal heuristic (empty/short text, non-printable/garbage ratio, and — when available — ocr.space overlay score)
+- [x] **CASC-03**: The router falls through on low-confidence output using a multi-signal heuristic (empty/short text, non-printable/garbage ratio, and — when available — ocr.space overlay score)
 - [ ] **CASC-04**: When no engine clears the threshold, the job returns the best result obtained, marked `low_confidence: true` (never loses the work)
 - [ ] **CASC-05**: Client selects behavior by named profile (e.g. `fast`/`balanced`/`quality`); an unspecified request uses the default profile
 - [ ] **CASC-06**: Client can force a specific engine/model, bypassing the cascade (capability-validated escape hatch)
 - [ ] **CASC-07**: The router skips engines whose API key/config is absent and still serves with whatever engines are present; it fails closed only if zero engines are configured
 - [ ] **CASC-08**: The cascade is bounded by max-tier, max-attempts, and a cumulative time budget so a request cannot run away in cost/latency
-- [ ] **CASC-09**: Routing chains, profiles, thresholds, and engine capabilities are declarative config (data), not hard-coded branches
+- [x] **CASC-09**: Routing chains, profiles, thresholds, and engine capabilities are declarative config (data), not hard-coded branches
 
 ### Input Processing
 
@@ -117,13 +117,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | OPS-05 | Phase 1 | Complete |
 | CASC-01 | Phase 2 | Pending |
 | CASC-02 | Phase 2 | Pending |
-| CASC-03 | Phase 2 | Pending |
+| CASC-03 | Phase 2 | Complete |
 | CASC-04 | Phase 2 | Pending |
 | CASC-05 | Phase 2 | Pending |
 | CASC-06 | Phase 2 | Pending |
 | CASC-07 | Phase 2 | Pending |
 | CASC-08 | Phase 2 | Pending |
-| CASC-09 | Phase 2 | Pending |
+| CASC-09 | Phase 2 | Complete |
 | JOB-02 | Phase 2 | Pending |
 | JOB-04 | Phase 2 | Pending |
 | INP-03 | Phase 3 | Pending |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 1 context gathered
-last_updated: "2026-07-23T20:10:35.737Z"
+status: executing
+stopped_at: Phase 2 context gathered
+last_updated: "2026-07-23T21:00:09.879Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 7
+  completed_plans: 4
   percent: 25
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-23)
 
 **Core value:** Never fail to return the best available text/data for a document — the cascade escalates quality automatically so one API call always yields the best result any configured engine could produce.
-**Current focus:** Phase 1 — Foundation
+**Current focus:** Phase 2 — Cascade Router
 
 ## Current Position
 
-Phase: 1 (Foundation) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
+Phase: 2 (Cascade Router) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-07-23
 
-Progress: [██████████] 100%
+Progress: [██████░░░░] 57%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100%
 | Phase 1 P01-01 | 20 | 3 tasks | 25 files |
 | Phase 1 P01-02 | 12 | 2 tasks | 17 files |
 | Phase 1 P01-03 | 7 | 2 tasks | 5 files |
+| Phase 02-cascade-router P01 | 7min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [01-01]: succeeded status (D-03), page-aware envelope (D-04), file field (D-06), default-engine resolver + zero-engine guard (D-08)
 - [Phase 1]: [01-02]: Ported node --test acceptance suite (16 files + verify-redaction) green against Plan 01 app; env-guards boot test supplies OCR key for the D-08 zero-engine guard; worker.test.js gained a D-04 page-aware-envelope success-path test
 - [Phase ?]: [01-03]: Deploy stack migrated to node:22-bookworm-slim + poppler-utils + tini (/usr/bin/tini); Node-native fetch healthcheck (bookworm has no wget/curl); ocr-router:latest; docker compose build verified real; full npm test 189/189 green
+- [Phase 02]: Cascade routing is declarative data in lib/v1/cascade/config.js (no engine-selecting branches, CASC-09)
+- [Phase 02]: Confidence heuristic is a pure env-tunable function; threshold numbers provisional pending live-key calibration (deferred ops)
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-23T20:10:20.609Z
-Stopped at: Phase 1 context gathered
+Last session: 2026-07-23T20:58:43.452Z
+Stopped at: Phase 2 context gathered
 Resume file: None
