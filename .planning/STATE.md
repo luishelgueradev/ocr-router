@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 03-input-pipeline 03-05-PLAN.md
-last_updated: "2026-07-23T22:50:01.413Z"
+last_updated: "2026-07-23T23:00:28.700Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
   percent: 50
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-23)
 ## Current Position
 
 Phase: 3 (Input Pipeline) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-07-23
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [█████████░] 86%
 | Phase 03-input-pipeline P03 | 18min | 2 tasks | 7 files |
 | Phase 3 P04 | ~3min | 2 tasks | 6 files |
 | Phase 03-input-pipeline P05 | ~4min | 2 tasks | 6 files |
+| Phase 03 P06 | 30 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,7 @@ Recent decisions affecting current work:
 - [Phase ?]: spawnCapture: ulimit -v (not -m), exec mandatory in sh -c, worker-owned SIGTERM->SIGKILL escalation timer; per-job temp registry drained by shutdown
 - [Phase 3]: PDF native-text short-circuit (unpdf sufficiency floor + word-token) skips OCR; scanned pages rasterize one-at-a-time via pdftoppm -singlefile stdout with a pdfinfo pre-raster page-count cap gate (typed 413) — Cheap fast path for digital PDFs; memory-safe single-page raster with four layered decompression-bomb guards through the 03-03 sandbox seam
 - [Phase ?]: 03-05: normalizeToFrames — one shared limitInputPixels-guarded normalize pipeline for all image branches; HEIC/BMP decoded first (heic-convert/@vingle/bmp-js) then sharp, never sharp() on raw; multipage TIFF/GIF decoded one {page:p} frame at a time (INP-07)
+- [Phase ?]: 03-06: page-pipeline owns per-page ordering+rollup; worker runInputJob owns ONE MAX_JOB_MS deadline (raster+all cascades) + always-cleaned temp dir; additive envelope adds status_rollup, single-image path byte-unchanged
 
 ### Pending Todos
 
@@ -111,6 +113,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-23T22:50:01.399Z
+Last session: 2026-07-23T23:00:09.880Z
 Stopped at: Completed 03-input-pipeline 03-05-PLAN.md
 Resume file: None
