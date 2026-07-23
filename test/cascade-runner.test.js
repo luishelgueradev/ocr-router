@@ -87,6 +87,27 @@ test('tier-1 stop: clean ocr.space result stops the cascade at the cheap first t
   assert.deepEqual(callLog, ['ocrspace-engine2'], 'no LLM tier was called');
 });
 
+// CR-01 regression: a rate-limited FIRST tier (ocr.space) must NOT abort the whole
+// cascade — it escalates to the OTHER-provider (Ollama) tiers. Previously the quota
+// short-circuit `break` terminated the cascade, violating the "never fail to return"
+// core value whenever ocr.space (tier-1 of every chain) was rate-limited.
+test('quota at tier-1 (ocr.space 429) escalates to the Ollama tier, not aborts the cascade', async (t) => {
+  const restore = withKeys(); reset();
+  t.after(() => { restore(); reset(); });
+  scripts['ocrspace-engine2'] = quota429;        // tier-1 rate-limited (different account)
+  scripts['ollama-gemini-3-flash'] = okClean();  // next-provider tier succeeds
+
+  const { result, trace } = await runCascade({ base64: 'x', mimeType: 'image/png', profile: 'balanced', deadlineSignal: deadline(), budgetMs: 60000 });
+
+  assert.ok(callLog.includes('ollama-gemini-3-flash'), 'must escalate to the Ollama tier after ocr.space quota');
+  assert.equal(trace.winning_engine, 'ollama-gemini-3-flash');
+  assert.equal(trace.stopped_reason, 'passed');
+  assert.equal(trace.low_confidence, false);
+  assert.equal(result.engineId, 'ollama-gemini-3-flash');
+  const ocrspaceAttempt = trace.engines_attempted.find(a => a.engine === 'ocrspace-engine2');
+  assert.equal(ocrspaceAttempt.outcome, 'failed', 'ocr.space recorded as a failed (quota) attempt');
+});
+
 // CASC-02/CASC-03: garbage at tier-1 ESCALATES to the LLM tier which passes.
 test('escalate-on-garbage: low-confidence ocr.space falls through to the passing LLM tier', async (t) => {
   const restore = withKeys(); reset();
