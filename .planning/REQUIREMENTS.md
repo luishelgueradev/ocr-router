@@ -98,13 +98,52 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by roadmapper) | — | Pending |
+| API-01 | Phase 1 | Pending |
+| API-02 | Phase 1 | Pending |
+| API-03 | Phase 1 | Pending |
+| API-04 | Phase 1 | Pending |
+| API-05 | Phase 1 | Pending |
+| API-06 | Phase 1 | Pending |
+| API-07 | Phase 1 | Pending |
+| API-08 | Phase 1 | Pending |
+| JOB-01 | Phase 1 | Pending |
+| JOB-03 | Phase 1 | Pending |
+| INP-01 | Phase 1 | Pending |
+| INP-02 | Phase 1 | Pending |
+| OPS-01 | Phase 1 | Pending |
+| OPS-02 | Phase 1 | Pending |
+| OPS-03 | Phase 1 | Pending |
+| OPS-04 | Phase 1 | Pending |
+| OPS-05 | Phase 1 | Pending |
+| CASC-01 | Phase 2 | Pending |
+| CASC-02 | Phase 2 | Pending |
+| CASC-03 | Phase 2 | Pending |
+| CASC-04 | Phase 2 | Pending |
+| CASC-05 | Phase 2 | Pending |
+| CASC-06 | Phase 2 | Pending |
+| CASC-07 | Phase 2 | Pending |
+| CASC-08 | Phase 2 | Pending |
+| CASC-09 | Phase 2 | Pending |
+| JOB-02 | Phase 2 | Pending |
+| JOB-04 | Phase 2 | Pending |
+| INP-03 | Phase 3 | Pending |
+| INP-04 | Phase 3 | Pending |
+| INP-05 | Phase 3 | Pending |
+| INP-06 | Phase 3 | Pending |
+| INP-07 | Phase 3 | Pending |
+| INP-08 | Phase 3 | Pending |
+| OPS-06 | Phase 3 | Pending |
+| STR-01 | Phase 4 | Pending |
+| STR-02 | Phase 4 | Pending |
+| STR-03 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 37 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 37 ⚠️
+- v1 requirements: 38 total (note: prior summary said 37 — recount of the enumerated REQ-IDs yields 38; corrected here)
+- Mapped to phases: 38 ✓
+- Unmapped: 0
+
+**Per-phase counts:** Phase 1 = 17 · Phase 2 = 11 · Phase 3 = 7 · Phase 4 = 3
 
 ---
 *Requirements defined: 2026-07-23*
-*Last updated: 2026-07-23 after initial definition*
+*Last updated: 2026-07-23 after roadmap creation (traceability populated, count corrected 37→38)*
