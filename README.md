@@ -101,6 +101,36 @@ npm test   # all suites + scripts/verify-redaction.js
 Deploy-artifact shape (this file, the Dockerfile, compose, Caddyfile) is covered
 by `test/deploy.test.js`. The build itself is validated by `docker compose build`.
 
+### Docker integration smoke (D-11 — real poppler + HEIC)
+
+Two input-pipeline behaviors depend on the deployed base image and **cannot** be
+proven on the host: the subprocess sandbox (dash `ulimit -v`/`-t` + coreutils
+`timeout` around real `pdftoppm`/`pdfinfo`) and HEIC decode. `poppler-utils` is
+Docker-only by design, so `test/docker-smoke.test.js` is a **recorded Docker/human
+smoke, not a host-suite gate** — it is deliberately **excluded from `npm test`**.
+
+On the host (no `pdftoppm`) every real-dependency case **SKIPS** (green-by-skip);
+inside the image every case **executes** against the real binaries:
+
+```bash
+# Build the image, then run the smoke inside it:
+bash scripts/docker-smoke.sh            # uses/builds ocr-router:latest
+REBUILD=1 bash scripts/docker-smoke.sh  # force a fresh image build first
+```
+
+The script bind-mounts only `test/` into `/app/test` (read-only) so Node resolves
+`lib/` and `node_modules` to the **image** build; the production image's copy set
+(which never ships `test/`) is untouched. What the smoke validates:
+
+| Risk-flag | Proven |
+| --------- | ------ |
+| **A6** | dash `ulimit` + coreutils `timeout` exist and wrap the child in the base image |
+| **INP-04** | a scanned (image-only) PDF rasterizes page-by-page through real `pdfinfo` + `pdftoppm` to a valid PNG |
+| **A1 / T-03-19** | the shipped `ulimit -v` (`ULIMIT_V_KB`, 768 MB) allows a legit page while a tiny `-v` rejects the same render — the memory guard actually bites |
+| **A5 / T-03-20** | a real HEIC decodes through `heic-convert` (WASM) → `sharp` to a normalized PNG in the runtime image |
+| **Pitfall 4 / A2** | a runaway child bound to an `AbortSignal` is killed within the grace window; `timeout(1)` is the wall-clock backstop |
+| **Pitfall 2** | a simulated mid-job SIGTERM (shutdown drain) leaves no temp dir on disk |
+
 ## Dependency security (OPS-06)
 
 Production dependencies are scanned with `npm audit` so a future vulnerable pin
