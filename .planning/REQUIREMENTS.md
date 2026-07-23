@@ -41,9 +41,9 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 
 - [x] **INP-01**: Service accepts raster images (PNG/JPEG/WebP) and routes them through the cascade
 - [x] **INP-02**: Input type is determined by authoritative content sniffing (magic bytes), not the client-declared content-type; spoofed/SVG-with-script inputs are rejected
-- [ ] **INP-03**: Native (text-bearing) PDFs have their embedded text extracted per page without OCR (cheap fast path)
-- [ ] **INP-04**: Scanned PDFs are rendered to images page-by-page and each page is routed through the cascade
-- [ ] **INP-05**: Additional image formats (TIFF multipage, HEIC, BMP, GIF) are normalized before routing
+- [x] **INP-03**: Native (text-bearing) PDFs have their embedded text extracted per page without OCR (cheap fast path)
+- [x] **INP-04**: Scanned PDFs are rendered to images page-by-page and each page is routed through the cascade
+- [x] **INP-05**: Additional image formats (TIFF multipage, HEIC, BMP, GIF) are normalized before routing
 - [ ] **INP-06**: Multi-page inputs return per-page results with a per-page status rollup; a single failed page does not fail the whole job silently
 - [x] **INP-07**: Page rasterization streams one page image in memory at a time and enforces page-count, DPI, and pixel caps (memory-safe, decompression-bomb resistant)
 - [ ] **INP-08**: Untrusted decode/rasterization runs in a killable, resource-limited subprocess; temporary files are always cleaned up
@@ -126,9 +126,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CASC-09 | Phase 2 | Complete |
 | JOB-02 | Phase 2 | Complete |
 | JOB-04 | Phase 2 | Complete |
-| INP-03 | Phase 3 | Pending |
-| INP-04 | Phase 3 | Pending |
-| INP-05 | Phase 3 | Pending |
+| INP-03 | Phase 3 | Complete |
+| INP-04 | Phase 3 | Complete |
+| INP-05 | Phase 3 | Complete |
 | INP-06 | Phase 3 | Pending |
 | INP-07 | Phase 3 | Complete |
 | INP-08 | Phase 3 | Pending |
