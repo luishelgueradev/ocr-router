@@ -30,7 +30,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Oversized uploads get `413`, unsupported/spoofed types (determined by authoritative magic-byte sniffing, not the client-declared content-type) get `400`/`422`, and a full queue returns `503 server_busy` with `Retry-After`.
   4. `GET /v1/health` responds unauthenticated, `GET /v1/models` lists available engines, and completed/failed jobs are swept from the in-memory store after the configured TTL.
   5. The stack runs via Docker Compose on `node:22-bookworm-slim` behind Caddy (automatic HTTPS, only `/v1/*` public, admin bound to Tailscale, never `0.0.0.0`), drains in-flight jobs on SIGTERM, and emits structured logs with request/job IDs and no secrets.
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 01-01-PLAN.md — Walking skeleton: port app runtime (lib/** + server.js) + 3 adaptations (succeeded/file/envelope) + default-engine resolver; prove the OCR slice end-to-end
+- [ ] 01-02-PLAN.md — Port + adapt the full node --test suite (16 files + verify-redaction) as the acceptance proof
+- [ ] 01-03-PLAN.md — Deploy stack: rewrite Dockerfile for node:22-bookworm-slim + poppler-utils + tini, adapt compose/Caddy, rewrite deploy.test.js
 
 ### Phase 2: Cascade Router
 **Goal**: Every image request automatically escalates through an ordered chain of engines, returning the best result any configured engine can produce — with full traceability, bounded cost/latency, and graceful degradation — the product's core value, proven on plain images.
@@ -76,7 +80,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/3 | Not started | - |
 | 2. Cascade Router | 0/TBD | Not started | - |
 | 3. Input Pipeline | 0/TBD | Not started | - |
 | 4. Structured Extraction | 0/TBD | Not started | - |
