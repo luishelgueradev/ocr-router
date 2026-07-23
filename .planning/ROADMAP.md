@@ -13,7 +13,7 @@ ocr-router grows bottom-up by dependency. It starts by porting a mature referenc
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Ported bearer-secured `/v1` async OCR API with page-aware envelope, image OCR, and Caddy/Tailscale deploy (completed 2026-07-23)
-- [ ] **Phase 2: Cascade Router** - Automatic engine escalation with confidence heuristic, traceability, cost caps, and graceful degradation
+- [x] **Phase 2: Cascade Router** - Automatic engine escalation with confidence heuristic, traceability, cost caps, and graceful degradation (completed 2026-07-23)
 - [ ] **Phase 3: Input Pipeline** - Memory-safe PDF (native + scanned) and multi-format image normalization with per-page results
 - [ ] **Phase 4: Structured Extraction** - Schema-driven, validated JSON extraction via vision LLM
 
@@ -52,7 +52,7 @@ Plans:
 - [x] 02-01-PLAN.md — Pure config-driven confidence heuristic + declarative cascade config (10-fixture TDD suite)
 - [x] 02-02-PLAN.md — Thread job AbortSignal into both providers + enable ocr.space overlay word-count signal
 - [x] 02-03-PLAN.md — Cascade runner + trace: walk/fall-through/best-so-far/budget/quota short-circuit (fall-through matrix TDD)
-- [ ] 02-04-PLAN.md — Wire cascade into worker + router: profiles, forced-engine bypass/422, trace, profiles discovery
+- [x] 02-04-PLAN.md — Wire cascade into worker + router: profiles, forced-engine bypass/422, trace, profiles discovery
 
 ### Phase 3: Input Pipeline
 **Goal**: The service accepts PDFs (native and scanned) and additional image formats, turning any upload into memory-safe per-page results routed through the already-proven cascade.
@@ -86,6 +86,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-07-23 |
-| 2. Cascade Router | 3/4 | In Progress|  |
+| 2. Cascade Router | 4/4 | Complete   | 2026-07-23 |
 | 3. Input Pipeline | 0/TBD | Not started | - |
 | 4. Structured Extraction | 0/TBD | Not started | - |

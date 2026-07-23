@@ -31,8 +31,8 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 - [x] **CASC-02**: The router falls through to the next engine on hard failure (error/timeout/5xx)
 - [x] **CASC-03**: The router falls through on low-confidence output using a multi-signal heuristic (empty/short text, non-printable/garbage ratio, and — when available — ocr.space overlay score)
 - [x] **CASC-04**: When no engine clears the threshold, the job returns the best result obtained, marked `low_confidence: true` (never loses the work)
-- [ ] **CASC-05**: Client selects behavior by named profile (e.g. `fast`/`balanced`/`quality`); an unspecified request uses the default profile
-- [ ] **CASC-06**: Client can force a specific engine/model, bypassing the cascade (capability-validated escape hatch)
+- [x] **CASC-05**: Client selects behavior by named profile (e.g. `fast`/`balanced`/`quality`); an unspecified request uses the default profile
+- [x] **CASC-06**: Client can force a specific engine/model, bypassing the cascade (capability-validated escape hatch)
 - [x] **CASC-07**: The router skips engines whose API key/config is absent and still serves with whatever engines are present; it fails closed only if zero engines are configured
 - [x] **CASC-08**: The cascade is bounded by max-tier, max-attempts, and a cumulative time budget so a request cannot run away in cost/latency
 - [x] **CASC-09**: Routing chains, profiles, thresholds, and engine capabilities are declarative config (data), not hard-coded branches
@@ -119,8 +119,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CASC-02 | Phase 2 | Complete |
 | CASC-03 | Phase 2 | Complete |
 | CASC-04 | Phase 2 | Complete |
-| CASC-05 | Phase 2 | Pending |
-| CASC-06 | Phase 2 | Pending |
+| CASC-05 | Phase 2 | Complete |
+| CASC-06 | Phase 2 | Complete |
 | CASC-07 | Phase 2 | Complete |
 | CASC-08 | Phase 2 | Complete |
 | CASC-09 | Phase 2 | Complete |
