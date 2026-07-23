@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Qwen3-VL OCR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; }
+    .dz-hover { border-color: #2563eb !important; background: #eff6ff; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-3xl mx-auto px-4 py-6">
+
+    <header class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-semibold text-gray-900">Qwen3-VL OCR</h1>
+      <div class="flex items-center gap-2">
+        <select id="modelSelect" class="border rounded-md px-2 py-1 text-sm bg-white"></select>
+        <button id="settingsBtn" type="button"
+                class="border rounded-md px-2 py-1 text-sm bg-white hover:bg-gray-100"
+                title="Configuración">⚙</button>
+      </div>
+    </header>
+
+    <div id="dropzone"
+         class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center bg-white cursor-pointer transition-colors">
+      <div id="dropzoneIdle">
+        <p class="text-gray-700">Arrastrá una imagen acá</p>
+        <p class="text-gray-500 text-sm mt-1">o hacé click para elegir · también podés pegar con Ctrl+V</p>
+      </div>
+      <div id="dropzoneLoaded" class="hidden">
+        <img id="preview" alt="" class="max-h-96 object-contain w-full mx-auto rounded" />
+        <div class="mt-3 text-sm text-gray-600 flex items-center justify-center gap-2">
+          <span id="fileMeta"></span>
+          <button id="removeBtn" type="button" class="text-red-600 hover:underline">✕ Quitar</button>
+        </div>
+      </div>
+      <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" />
+    </div>
+
+    <div id="status" class="my-4 text-sm text-gray-600 flex items-center gap-2">
+      <span id="statusText">Esperando imagen…</span>
+      <span id="spinner" class="hidden inline-block w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full spin"></span>
+    </div>
+
+    <section class="bg-white border rounded-lg overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2 border-b">
+        <h2 class="text-sm font-medium text-gray-700">Texto extraído</h2>
+        <button id="copyBtn" type="button" disabled
+                class="text-sm border rounded px-2 py-1 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          <span id="copyLabel">Copiar</span>
+        </button>
+      </div>
+      <pre id="resultText" class="font-mono text-sm whitespace-pre-wrap p-4 min-h-[8rem] text-gray-800"></pre>
+    </section>
+
+  </div>
+
+  <div id="settingsModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+      <button id="settingsClose" type="button"
+              class="absolute top-3 right-3 text-gray-500 hover:text-gray-800">✕</button>
+      <h2 class="text-lg font-semibold mb-4">Configuración</h2>
+
+      <div class="mb-5">
+        <label class="block text-sm font-medium text-gray-700">Ollama API Key</label>
+        <div class="mt-1 flex items-center gap-2">
+          <input id="ollamaKeyInput" type="password" autocomplete="off"
+                 class="flex-1 border rounded px-2 py-1 text-sm" placeholder="" />
+          <button data-toggle="ollamaKeyInput" type="button"
+                  class="border rounded px-2 py-1 text-sm bg-white hover:bg-gray-100" title="Mostrar/ocultar">👁</button>
+        </div>
+        <div class="mt-2 flex items-center gap-2">
+          <button id="ollamaSave"  type="button" class="text-sm border rounded px-3 py-1 bg-blue-600 text-white hover:bg-blue-700">Guardar</button>
+          <button id="ollamaClear" type="button" class="text-sm border rounded px-3 py-1 bg-white hover:bg-gray-100">Borrar override</button>
+          <span id="ollamaHint" class="text-xs text-red-600 hidden">Pegá una key primero</span>
+        </div>
+      </div>
+
+      <hr class="my-4" />
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700">OCR.space API Key</label>
+        <div class="mt-1 flex items-center gap-2">
+          <input id="ocrspaceKeyInput" type="password" autocomplete="off"
+                 class="flex-1 border rounded px-2 py-1 text-sm" placeholder="" />
+          <button data-toggle="ocrspaceKeyInput" type="button"
+                  class="border rounded px-2 py-1 text-sm bg-white hover:bg-gray-100" title="Mostrar/ocultar">👁</button>
+        </div>
+        <div class="mt-2 flex items-center gap-2">
+          <button id="ocrspaceSave"  type="button" class="text-sm border rounded px-3 py-1 bg-blue-600 text-white hover:bg-blue-700">Guardar</button>
+          <button id="ocrspaceClear" type="button" class="text-sm border rounded px-3 py-1 bg-white hover:bg-gray-100">Borrar override</button>
+          <span id="ocrspaceHint" class="text-xs text-red-600 hidden">Pegá una key primero</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ALLOWED_MIME = ['image/png', 'image/jpeg', 'image/webp'];
+    const MAX_BYTES = 15 * 1024 * 1024;
+
+    const dropzone    = document.getElementById('dropzone');
+    const dzIdle      = document.getElementById('dropzoneIdle');
+    const dzLoaded    = document.getElementById('dropzoneLoaded');
+    const preview     = document.getElementById('preview');
+    const fileMeta    = document.getElementById('fileMeta');
+    const fileInput   = document.getElementById('fileInput');
+    const removeBtn   = document.getElementById('removeBtn');
+    const statusText  = document.getElementById('statusText');
+    const spinner     = document.getElementById('spinner');
+    const resultText  = document.getElementById('resultText');
+    const copyBtn     = document.getElementById('copyBtn');
+    const copyLabel   = document.getElementById('copyLabel');
+    const modelSelect = document.getElementById('modelSelect');
+
+    let MODELS = [];
+    let ENV_KEYS = { ollama: false, ocrspace: false };
+    const LS_MODEL = 'web-ocr.modelId';
+
+    function populateModelSelect() {
+      modelSelect.innerHTML = '';
+      for (const m of MODELS) {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.label;
+        modelSelect.appendChild(opt);
+      }
+      const saved = localStorage.getItem(LS_MODEL);
+      if (saved && MODELS.some(m => m.id === saved)) {
+        modelSelect.value = saved;
+      }
+    }
+
+    modelSelect.addEventListener('change', () => {
+      localStorage.setItem(LS_MODEL, modelSelect.value);
+    });
+
+    async function loadConfig() {
+      try {
+        const res = await fetch('/api/config');
+        const cfg = await res.json();
+        MODELS = cfg.models || [];
+        ENV_KEYS = cfg.envKeys || { ollama: false, ocrspace: false };
+        populateModelSelect();
+      } catch (e) {
+        statusText.textContent = '✗ No se pudo cargar la configuración del servidor';
+        statusText.className = 'text-sm text-red-700';
+      }
+    }
+    loadConfig();
+
+    let state = 'idle';
+    let currentFile = null;
+    let currentBase64 = null;
+
+    function setState(next, ...args) {
+      state = next;
+      spinner.classList.add('hidden');
+      copyBtn.disabled = true;
+      statusText.className = 'text-sm';
+
+      switch (next) {
+        case 'idle':
+          statusText.textContent = 'Esperando imagen…';
+          statusText.classList.add('text-gray-600');
+          dzIdle.classList.remove('hidden');
+          dzLoaded.classList.add('hidden');
+          currentFile = null; currentBase64 = null;
+          resultText.textContent = '';
+          break;
+        case 'loaded':
+          statusText.textContent = 'Imagen cargada · iniciando OCR…';
+          statusText.classList.add('text-gray-600');
+          break;
+        case 'processing': {
+          const m = MODELS.find(x => x.id === modelSelect.value) || MODELS[0];
+          statusText.textContent = `Extrayendo texto con ${m.label}…`;
+          statusText.classList.add('text-blue-700');
+          spinner.classList.remove('hidden');
+          break;
+        }
+        case 'success':
+          statusText.textContent = `✓ Listo · ${args[0]} ms`;
+          statusText.classList.add('text-green-700');
+          copyBtn.disabled = false;
+          break;
+        case 'error':
+          statusText.textContent = `✗ ${args[0]}`;
+          statusText.classList.add('text-red-700');
+          break;
+      }
+    }
+
+    function showPreview(file) {
+      currentFile = file;
+      preview.src = URL.createObjectURL(file);
+      fileMeta.textContent = `${file.name} · ${(file.size / 1024).toFixed(0)} KB`;
+      dzIdle.classList.add('hidden');
+      dzLoaded.classList.remove('hidden');
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result;
+          const comma = dataUrl.indexOf(',');
+          resolve(dataUrl.slice(comma + 1));
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function handleFile(file) {
+      if (!ALLOWED_MIME.includes(file.type)) {
+        setState('error', 'Formato no soportado (usá PNG, JPG o WebP)');
+        return;
+      }
+      if (file.size > MAX_BYTES) {
+        setState('error', 'Imagen demasiado grande (>15 MB)');
+        return;
+      }
+      showPreview(file);
+      setState('loaded');
+      try {
+        currentBase64 = await fileToBase64(file);
+      } catch (e) {
+        setState('error', 'No se pudo leer el archivo');
+        return;
+      }
+      await runOCR();
+    }
+
+    async function runOCR() {
+      setState('processing');
+      try {
+        const model = MODELS.find(x => x.id === modelSelect.value);
+        const lsKey = model.provider === 'ollama' ? LS_OLLAMA_KEY : LS_OCRSPACE_KEY;
+        const override = localStorage.getItem(lsKey);
+        const body = {
+          modelId: model.id,
+          image: currentBase64,
+          mimeType: currentFile.type,
+        };
+        if (override) body.apiKeyOverride = override;
+        const res = await fetch('/api/ocr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        let data;
+        try { data = await res.json(); }
+        catch { setState('error', 'Respuesta inválida del servidor'); return; }
+
+        if (!data.ok) {
+          setState('error', data.error || 'Error desconocido');
+          return;
+        }
+        resultText.textContent = data.text;
+        setState('success', data.timeMs);
+      } catch (e) {
+        setState('error', 'No se pudo conectar al servidor');
+      }
+    }
+
+    let dragCounter = 0;
+    window.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      if (state !== 'processing') dropzone.classList.add('dz-hover');
+    });
+    window.addEventListener('dragover', (e) => { e.preventDefault(); });
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        dropzone.classList.remove('dz-hover');
+      }
+    });
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      dropzone.classList.remove('dz-hover');
+      if (state === 'processing') return;
+      const f = e.dataTransfer?.files?.[0];
+      if (f) handleFile(f);
+    });
+
+    dropzone.addEventListener('click', (ev) => {
+      if (state === 'processing') return;
+      if (ev.target.closest('button')) return;
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files?.[0];
+      if (f) handleFile(f);
+      fileInput.value = '';
+    });
+
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setState('idle');
+    });
+
+    window.addEventListener('paste', (e) => {
+      if (state === 'processing') return;
+      const items = e.clipboardData?.items || [];
+      for (const it of items) {
+        if (it.type && it.type.startsWith('image/')) {
+          const f = it.getAsFile();
+          if (f) handleFile(f);
+          break;
+        }
+      }
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      const text = resultText.textContent || '';
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch {}
+        document.body.removeChild(ta);
+      }
+      copyLabel.textContent = '✓ Copiado';
+      setTimeout(() => { copyLabel.textContent = 'Copiar'; }, 1500);
+    });
+
+    // ===== Settings modal & API key overrides =====
+
+    const LS_OLLAMA_KEY   = 'web-ocr.ollamaKey';
+    const LS_OCRSPACE_KEY = 'web-ocr.ocrspaceKey';
+
+    const settingsModal   = document.getElementById('settingsModal');
+    const settingsBtn     = document.getElementById('settingsBtn');
+    const settingsClose   = document.getElementById('settingsClose');
+    const ollamaInput     = document.getElementById('ollamaKeyInput');
+    const ocrspaceInput   = document.getElementById('ocrspaceKeyInput');
+    const ollamaSave      = document.getElementById('ollamaSave');
+    const ollamaClear     = document.getElementById('ollamaClear');
+    const ocrspaceSave    = document.getElementById('ocrspaceSave');
+    const ocrspaceClear   = document.getElementById('ocrspaceClear');
+    const ollamaHint      = document.getElementById('ollamaHint');
+    const ocrspaceHint    = document.getElementById('ocrspaceHint');
+
+    function placeholderFor(provider) {
+      const lsKey = provider === 'ollama' ? LS_OLLAMA_KEY : LS_OCRSPACE_KEY;
+      if (localStorage.getItem(lsKey)) return '(override activo · click 👁 para ver)';
+      if (ENV_KEYS[provider]) return '(usando valor de .env)';
+      return '(no configurada)';
+    }
+
+    function refreshPlaceholders() {
+      ollamaInput.placeholder   = placeholderFor('ollama');
+      ocrspaceInput.placeholder = placeholderFor('ocrspace');
+      ollamaInput.value = '';
+      ocrspaceInput.value = '';
+      ollamaInput.type = 'password';
+      ocrspaceInput.type = 'password';
+      ollamaHint.classList.add('hidden');
+      ocrspaceHint.classList.add('hidden');
+    }
+
+    function openSettings() { refreshPlaceholders(); settingsModal.classList.remove('hidden'); }
+    function closeSettings() { settingsModal.classList.add('hidden'); }
+
+    settingsBtn.addEventListener('click', openSettings);
+    settingsClose.addEventListener('click', closeSettings);
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) closeSettings();
+    });
+
+    document.querySelectorAll('[data-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const inp = document.getElementById(btn.dataset.toggle);
+        inp.type = inp.type === 'password' ? 'text' : 'password';
+      });
+    });
+
+    function wireSave(input, lsKey, hint) {
+      return () => {
+        const v = (input.value || '').trim();
+        if (!v) { hint.classList.remove('hidden'); return; }
+        localStorage.setItem(lsKey, v);
+        closeSettings();
+      };
+    }
+    function wireClear(input, lsKey) {
+      return () => {
+        localStorage.removeItem(lsKey);
+        refreshPlaceholders();
+      };
+    }
+
+    ollamaSave.addEventListener('click',    wireSave(ollamaInput,   LS_OLLAMA_KEY,   ollamaHint));
+    ollamaClear.addEventListener('click',   wireClear(ollamaInput,  LS_OLLAMA_KEY));
+    ocrspaceSave.addEventListener('click',  wireSave(ocrspaceInput, LS_OCRSPACE_KEY, ocrspaceHint));
+    ocrspaceClear.addEventListener('click', wireClear(ocrspaceInput, LS_OCRSPACE_KEY));
+
+    // Disable image-paste handler when modal is open (capture phase, runs first).
+    window.addEventListener('paste', (e) => {
+      if (!settingsModal.classList.contains('hidden')) e.stopImmediatePropagation();
+    }, true);
+  </script>
+</body>
+</html>
