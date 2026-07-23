@@ -8,7 +8,7 @@
   "scripts": {
     "web": "node server.js",
     "audit": "npm audit --omit=dev --audit-level=high",
-    "test": "node --test test/jobs.test.js test/shutdown.test.js test/worker.test.js test/deploy.test.js test/env-guards.test.js test/sniff.test.js test/errors.test.js test/modes.test.js test/upload.test.js test/models-shape.test.js test/auth.test.js test/v1-routes.test.js test/health.test.js test/concurrency.test.js test/jobs-extra.test.js test/logger-shape.test.js test/pino-http.test.js test/worker-logging.test.js test/worker-failure-logging.test.js test/cascade-heuristic.test.js test/provider-signal.test.js test/cascade-runner.test.js test/cascade-integration.test.js test/caps.test.js test/spawn-capture.test.js test/temp.test.js && node --test scripts/verify-redaction.js"
+    "test": "node --test test/jobs.test.js test/shutdown.test.js test/worker.test.js test/deploy.test.js test/env-guards.test.js test/sniff.test.js test/errors.test.js test/modes.test.js test/upload.test.js test/models-shape.test.js test/auth.test.js test/v1-routes.test.js test/health.test.js test/concurrency.test.js test/jobs-extra.test.js test/logger-shape.test.js test/pino-http.test.js test/worker-logging.test.js test/worker-failure-logging.test.js test/cascade-heuristic.test.js test/provider-signal.test.js test/cascade-runner.test.js test/cascade-integration.test.js test/caps.test.js test/spawn-capture.test.js test/temp.test.js test/pdf-text.test.js test/rasterize.test.js && node --test scripts/verify-redaction.js"
   },
   "dependencies": {
     "@vingle/bmp-js": "^0.2.5",
