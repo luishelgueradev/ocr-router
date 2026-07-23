@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-07-23T22:25:27.050Z"
+stopped_at: Completed 03-03
+last_updated: "2026-07-23T22:32:10.242Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 14
-  completed_plans: 9
+  completed_plans: 10
   percent: 50
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-23)
 ## Current Position
 
 Phase: 3 (Input Pipeline) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-07-23
 
-Progress: [██████░░░░] 64%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [██████░░░░] 64%
 | Phase 2 P04 | 4min | 3 tasks | 5 files |
 | Phase 3 P01 | 6min | 2 tasks | 5 files |
 | Phase 3 P02 | 4 | 2 tasks | 5 files |
+| Phase 03-input-pipeline P03 | 18min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,7 @@ Recent decisions affecting current work:
 - [Phase 2]: One authoritative job deadline composed via AbortSignal.any; per-engine timeout = min(perEngineMs, remaining) (JOB-04)
 - [Phase 3]: Phase 3 input caps centralised in lib/v1/input/caps.js (boot-validated env; MAX_JOB_MS is the whole-job budget) — Single validated config surface for every downstream rasterize/normalize ceiling; fails loudly at boot
 - [Phase 3]: OPS-06 npm audit gate shipped GREEN via npm audit fix (0 vulns, no Express-5 bump, no allowlist) — Pre-existing axios/form-data/qs/body-parser advisories remediated transitively; gate is a live guard not aspirational
+- [Phase ?]: spawnCapture: ulimit -v (not -m), exec mandatory in sh -c, worker-owned SIGTERM->SIGKILL escalation timer; per-job temp registry drained by shutdown
 
 ### Pending Todos
 
@@ -105,6 +107,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-23T22:25:27.036Z
-Stopped at: Phase 3 context gathered
+Last session: 2026-07-23T22:32:10.228Z
+Stopped at: Completed 03-03
 Resume file: None

@@ -46,7 +46,7 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 - [x] **INP-05**: Additional image formats (TIFF multipage, HEIC, BMP, GIF) are normalized before routing
 - [ ] **INP-06**: Multi-page inputs return per-page results with a per-page status rollup; a single failed page does not fail the whole job silently
 - [x] **INP-07**: Page rasterization streams one page image in memory at a time and enforces page-count, DPI, and pixel caps (memory-safe, decompression-bomb resistant)
-- [ ] **INP-08**: Untrusted decode/rasterization runs in a killable, resource-limited subprocess; temporary files are always cleaned up
+- [x] **INP-08**: Untrusted decode/rasterization runs in a killable, resource-limited subprocess; temporary files are always cleaned up
 
 ### Structured Extraction
 
@@ -131,7 +131,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | INP-05 | Phase 3 | Complete |
 | INP-06 | Phase 3 | Pending |
 | INP-07 | Phase 3 | Complete |
-| INP-08 | Phase 3 | Pending |
+| INP-08 | Phase 3 | Complete |
 | OPS-06 | Phase 3 | Complete |
 | STR-01 | Phase 4 | Pending |
 | STR-02 | Phase 4 | Pending |

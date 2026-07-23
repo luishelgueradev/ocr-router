@@ -69,7 +69,7 @@ Plans:
 Plans:
 - [x] 03-01-PLAN.md — Dependencies + OPS-06 npm audit gate (green) + boot-validated caps config [Wave 1]
 - [x] 03-02-PLAN.md — Extend magic-byte sniff + accepted-type gates for PDF/TIFF/HEIC/BMP/GIF [Wave 1]
-- [ ] 03-03-PLAN.md — Subprocess sandbox seam (spawnCapture) + temp-dir registry + shutdown drain (INP-08) [Wave 1]
+- [x] 03-03-PLAN.md — Subprocess sandbox seam (spawnCapture) + temp-dir registry + shutdown drain (INP-08) [Wave 1]
 - [ ] 03-04-PLAN.md — PDF path: unpdf native-text short-circuit + memory-safe single-page rasterize (pdfinfo cap + pdftoppm) [Wave 2]
 - [ ] 03-05-PLAN.md — Image normalization: sharp TIFF/GIF frames + heic-convert/bmp-js decode → PNG frames [Wave 2]
 - [ ] 03-06-PLAN.md — Page-pipeline orchestrator + worker runInputJob: one deadline, temp lifecycle, per-page rollup [Wave 3]
@@ -95,5 +95,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-07-23 |
 | 2. Cascade Router | 4/4 | Complete   | 2026-07-23 |
-| 3. Input Pipeline | 2/7 | In Progress|  |
+| 3. Input Pipeline | 3/7 | In Progress|  |
 | 4. Structured Extraction | 0/TBD | Not started | - |
