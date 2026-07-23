@@ -90,7 +90,9 @@ test('renderPage: builds the exact one-page pixel-bounded pdftoppm argv and reso
   assert.match(body, /-f 3 -l 3/, 'first/last pin the single page');
   assert.match(body, /-singlefile/, '-singlefile required for stdout streaming');
   assert.match(body, new RegExp(`-scale-to ${CAPS.RASTER_MAX_DIM}`), '-scale-to long-side pixel ceiling');
-  assert.match(body, /\/tmp\/input\.pdf -$/, 'ends with <pdfPath> - (stdout)');
+  // pdftoppm streams to stdout when the output-root is OMITTED (a trailing '-'
+  // is written as a file '-.png' by poppler 22.12.0 — see 03-07 Docker smoke).
+  assert.match(body, /\/tmp\/input\.pdf$/, 'ends with <pdfPath> and NO output-root (stdout streaming)');
   // Sandbox caps ride the body (ulimit guards #3; wall-clock backstop).
   assert.match(body, new RegExp(`ulimit -v ${CAPS.ULIMIT_V_KB}`), 'ulimit -v address-space cap');
   assert.match(body, new RegExp(`ulimit -t ${CAPS.ULIMIT_CPU_SEC}`), 'ulimit -t CPU-sec cap');

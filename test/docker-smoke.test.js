@@ -121,14 +121,16 @@ test('smoke/A1: real ulimit -v ALLOWS a legit page but a tiny -v REJECTS the sam
   const ok = await renderPage(SCANNED_PDF, 1);
   assert.deepEqual(ok.subarray(0, 8), PNG_MAGIC, `render succeeds at ULIMIT_V_KB=${CAPS.ULIMIT_V_KB} (legit page allowed)`);
 
-  // Same render under an absurdly tight -v (2 MB address space) — poppler cannot
-  // even map its shared libs, so the kernel kills it and spawnCapture rejects.
-  // This proves the -v guard actually constrains the real binary (T-03-19).
+  // Same render under an absurdly tight -v (2 MB address space) — the sandbox
+  // cannot even map libc for the wrapped binary, so it exits non-zero and
+  // spawnCapture rejects. This proves the -v guard actually constrains the real
+  // process (T-03-19). NOTE: NO trailing '-' — pdftoppm streams to stdout when
+  // the output-root is omitted (the trailing-'-' bug fixed in rasterize.js).
   const args = [
     '-r', String(CAPS.RASTER_DPI), '-png',
     '-f', '1', '-l', '1', '-singlefile',
     '-scale-to', String(CAPS.RASTER_MAX_DIM),
-    SCANNED_PDF, '-',
+    SCANNED_PDF,
   ];
   await assert.rejects(
     () => spawnCapture('pdftoppm', args, {
