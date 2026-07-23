@@ -1,0 +1,172 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { EventEmitter } = require('node:events');
+
+const { runPipeline } = require('../lib/v1/input/page-pipeline');
+const { CAPS } = require('../lib/v1/input/caps');
+
+// 03-06 / INP-03..08 — the page-pipeline orchestrator. This is the keystone that
+// turns any admitted document into ordered per-page results with a status
+// rollup, routed through an INJECTED routePage fn (bound to the cascade in the
+// worker) and an INJECTED spawnFn (the D-11 poppler seam) — so the whole module
+// runs on the host with NO real poppler and NO real providers. Native decoders
+// (unpdf for PDF text, sharp for the image frames) run for real.
+
+const FIX = path.join(__dirname, 'fixtures');
+const NATIVE_PDF = fs.readFileSync(path.join(FIX, 'native-sample.pdf')); // 2 native-text pages
+const TIFF = fs.readFileSync(path.join(FIX, 'multi-frame.tif')); //       3 frames
+
+// A fake ChildProcess: emits pdfinfo's "Pages: N" for a pdfinfo body, or a fake
+// PNG for a pdftoppm body, then closes 0. Records every shell body it saw so a
+// test can assert that NO rasterization ran before a cap check.
+function makePdfSpawn({ pages, renderPng, bodies }) {
+  return (cmd, args) => {
+    const body = args[1];
+    if (bodies) bodies.push(body);
+    const cp = new EventEmitter();
+    cp.stdout = new EventEmitter();
+    cp.stderr = new EventEmitter();
+    cp.kill = () => {};
+    queueMicrotask(() => {
+      if (/pdfinfo/.test(body)) {
+        cp.stdout.emit('data', Buffer.from(`Producer: x\nPages: ${pages}\nEncrypted: no\n`));
+      } else if (/pdftoppm/.test(body)) {
+        cp.stdout.emit('data', renderPng || Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      }
+      cp.emit('close', 0, null);
+    });
+    return cp;
+  };
+}
+
+// A recording fake routePage — captures each call and returns whatever `impl`
+// yields (the {text,engineId,provider,confidence,trace} shape the worker's
+// cascade/forced closure produces).
+function makeRoutePage(impl) {
+  const calls = [];
+  const fn = async (b64, mime) => {
+    calls.push({ b64, mime });
+    return impl(b64, mime, calls.length);
+  };
+  fn.calls = calls;
+  return fn;
+}
+
+function mkTemp() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'pp-test-'));
+}
+
+test('PDF native pages short-circuit OCR: routePage is NEVER called', async (t) => {
+  const tempDir = mkTemp();
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const routePage = makeRoutePage(() => ({ text: 'X', engineId: 'e', provider: 'p', confidence: 0.9 }));
+  const spawnFn = makePdfSpawn({ pages: 2 });
+
+  const out = await runPipeline({
+    buffer: NATIVE_PDF, sniffedType: 'application/pdf', profile: 'balanced',
+    tempDir, routePage, spawnFn,
+  });
+
+  assert.equal(routePage.calls.length, 0, 'a native page must NOT call the cascade');
+  assert.equal(out.pages.length, 2, 'one result per page');
+  assert.equal(out.pages[0].engine, 'pdf-native', 'native page engine is pdf-native');
+  assert.equal(out.pages[0].confidence, 1, 'native page confidence is 1');
+  assert.equal(out.pages[1].engine, 'pdf-native');
+  assert.equal(out.status_rollup, 'completed', 'all pages succeeded');
+  assert.equal(out.engine, 'pdf-native', 'single-engine summary');
+  assert.ok(out.text.includes('page one'), 'concatenated text carries page 1');
+  assert.ok(out.text.includes('Second page'), 'concatenated text carries page 2');
+  assert.equal(typeof out.trace.elapsed_ms, 'number', 'trace preserves elapsed_ms');
+  assert.equal(out.trace.winning_engine, 'pdf-native', 'trace preserves winning_engine');
+});
+
+test('mixed PDF: native pages skip OCR, a scanned page routes → mixed summary', async (t) => {
+  const tempDir = mkTemp();
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  // Report 3 pages though the fixture only has 2 text-bearing pages → page 3 has
+  // no embedded text (sufficient()=false) → it must rasterize + route.
+  const bodies = [];
+  const spawnFn = makePdfSpawn({ pages: 3, renderPng: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d]), bodies });
+  const routePage = makeRoutePage(() => ({ text: 'ocr-text', engineId: 'ollama-x', provider: 'ollama', confidence: 0.85 }));
+
+  const out = await runPipeline({
+    buffer: NATIVE_PDF, sniffedType: 'application/pdf', tempDir, routePage, spawnFn,
+  });
+
+  assert.equal(out.pages.length, 3, 'three pages');
+  assert.equal(out.pages[0].engine, 'pdf-native');
+  assert.equal(out.pages[1].engine, 'pdf-native');
+  assert.equal(out.pages[2].engine, 'ollama-x', 'scanned page routed through the cascade');
+  assert.equal(routePage.calls.length, 1, 'only the scanned page hit routePage');
+  assert.equal(routePage.calls[0].mime, 'image/png', 'rasterized page routed as PNG');
+  assert.equal(out.status_rollup, 'completed');
+  assert.equal(out.engine, 'mixed', 'differing engines → mixed summary');
+  assert.ok(bodies.some((b) => /pdftoppm/.test(b)), 'the scanned page was rasterized');
+});
+
+test('image path: multipage TIFF → one routed page per frame, order preserved', async (t) => {
+  const tempDir = mkTemp();
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const routePage = makeRoutePage((b64, mime, n) => ({
+    text: `p${n}`, engineId: 'ollama', provider: 'ollama', confidence: 0.8,
+  }));
+
+  const out = await runPipeline({ buffer: TIFF, sniffedType: 'image/tiff', tempDir, routePage });
+
+  assert.equal(routePage.calls.length, 3, 'one routePage call per TIFF frame');
+  assert.equal(out.pages.length, 3);
+  assert.deepEqual(out.pages.map((p) => p.text), ['p1', 'p2', 'p3'], 'order preserved');
+  assert.deepEqual(out.pages.map((p) => p.page), [1, 2, 3], 'page numbers in order');
+  assert.equal(out.status_rollup, 'completed');
+  assert.equal(out.engine, 'ollama', 'single-engine summary');
+});
+
+test('one failed page is recorded (with error) but does NOT fail the whole job', async (t) => {
+  const tempDir = mkTemp();
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  // routePage throws on the 2nd page only.
+  const routePage = makeRoutePage((b64, mime, n) => {
+    if (n === 2) throw Object.assign(new Error('provider exploded'), { code: 'route_failed' });
+    return { text: `p${n}`, engineId: 'e', provider: 'p', confidence: 0.7 };
+  });
+
+  const out = await runPipeline({ buffer: TIFF, sniffedType: 'image/tiff', tempDir, routePage });
+
+  assert.equal(out.pages.length, 3, 'no page is dropped');
+  assert.deepEqual(out.pages.map((p) => p.page), [1, 2, 3], 'page order preserved across the failure');
+  assert.equal(out.status_rollup, 'completed_with_errors', 'rollup flips on a page failure');
+  assert.equal(out.pages[1].engine, null, 'failed page has no engine');
+  assert.equal(out.pages[1].confidence, null, 'failed page has no confidence');
+  assert.ok(out.pages[1].error, 'failed page records its error');
+  assert.equal(out.pages[1].error.code, 'route_failed', 'error carries a typed code');
+  assert.equal(out.pages[1].text, '', 'failed page has empty text');
+  assert.equal(out.pages[0].text, 'p1', 'page 1 still succeeded');
+  assert.equal(out.pages[2].text, 'p3', 'processing continued after the failure');
+  // concatenated text joins only the non-empty (successful) pages
+  assert.equal(out.text, 'p1\n\np3');
+});
+
+test('over-cap page count rejects BEFORE any rasterization', async (t) => {
+  const tempDir = mkTemp();
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const bodies = [];
+  const spawnFn = makePdfSpawn({ pages: CAPS.MAX_PDF_PAGES + 1, bodies });
+  const routePage = makeRoutePage(() => ({ text: 'x', engineId: 'e', provider: 'p', confidence: 1 }));
+
+  await assert.rejects(
+    () => runPipeline({ buffer: NATIVE_PDF, sniffedType: 'application/pdf', tempDir, routePage, spawnFn }),
+    /pdf_too_many_pages/,
+    'an over-cap PDF is rejected typed',
+  );
+
+  assert.ok(!bodies.some((b) => /pdftoppm/.test(b)), 'no page was rasterized before the cap gate');
+  assert.equal(routePage.calls.length, 0, 'no page was routed');
+});
