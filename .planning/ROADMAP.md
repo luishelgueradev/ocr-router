@@ -12,7 +12,7 @@ ocr-router grows bottom-up by dependency. It starts by porting a mature referenc
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Ported bearer-secured `/v1` async OCR API with page-aware envelope, image OCR, and Caddy/Tailscale deploy
+- [x] **Phase 1: Foundation** - Ported bearer-secured `/v1` async OCR API with page-aware envelope, image OCR, and Caddy/Tailscale deploy (completed 2026-07-23)
 - [ ] **Phase 2: Cascade Router** - Automatic engine escalation with confidence heuristic, traceability, cost caps, and graceful degradation
 - [ ] **Phase 3: Input Pipeline** - Memory-safe PDF (native + scanned) and multi-format image normalization with per-page results
 - [ ] **Phase 4: Structured Extraction** - Schema-driven, validated JSON extraction via vision LLM
@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] 01-01-PLAN.md — Walking skeleton: port app runtime (lib/** + server.js) + 3 adaptations (succeeded/file/envelope) + default-engine resolver; prove the OCR slice end-to-end
 - [x] 01-02-PLAN.md — Port + adapt the full node --test suite (16 files + verify-redaction) as the acceptance proof
-- [ ] 01-03-PLAN.md — Deploy stack: rewrite Dockerfile for node:22-bookworm-slim + poppler-utils + tini, adapt compose/Caddy, rewrite deploy.test.js
+- [x] 01-03-PLAN.md — Deploy stack: rewrite Dockerfile for node:22-bookworm-slim + poppler-utils + tini, adapt compose/Caddy, rewrite deploy.test.js
 
 ### Phase 2: Cascade Router
 **Goal**: Every image request automatically escalates through an ordered chain of engines, returning the best result any configured engine can produce — with full traceability, bounded cost/latency, and graceful degradation — the product's core value, proven on plain images.
@@ -80,7 +80,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/3 | In Progress|  |
+| 1. Foundation | 3/3 | Complete   | 2026-07-23 |
 | 2. Cascade Router | 0/TBD | Not started | - |
 | 3. Input Pipeline | 0/TBD | Not started | - |
 | 4. Structured Extraction | 0/TBD | Not started | - |

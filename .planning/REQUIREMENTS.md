@@ -56,8 +56,8 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 
 ### Deploy & Operations
 
-- [ ] **OPS-01**: The service runs as a Docker/Compose stack on `node:22-bookworm-slim` with the required system packages (`poppler-utils`)
-- [ ] **OPS-02**: Caddy fronts the service with automatic HTTPS and routes only `/v1/*` publicly
+- [x] **OPS-01**: The service runs as a Docker/Compose stack on `node:22-bookworm-slim` with the required system packages (`poppler-utils`)
+- [x] **OPS-02**: Caddy fronts the service with automatic HTTPS and routes only `/v1/*` publicly
 - [x] **OPS-03**: The admin surface binds only to the Tailscale interface, never `0.0.0.0` (fail-closed guard)
 - [x] **OPS-04**: In-flight jobs drain on SIGTERM (graceful shutdown) within a bounded window
 - [x] **OPS-05**: Requests and jobs are traceable via structured logs with request/job IDs; secrets are never logged
@@ -110,8 +110,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | JOB-03 | Phase 1 | Complete |
 | INP-01 | Phase 1 | Complete |
 | INP-02 | Phase 1 | Complete |
-| OPS-01 | Phase 1 | Pending |
-| OPS-02 | Phase 1 | Pending |
+| OPS-01 | Phase 1 | Complete |
+| OPS-02 | Phase 1 | Complete |
 | OPS-03 | Phase 1 | Complete |
 | OPS-04 | Phase 1 | Complete |
 | OPS-05 | Phase 1 | Complete |
