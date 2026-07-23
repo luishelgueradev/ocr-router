@@ -1,0 +1,101 @@
+# Caddyfile — ocr-router reverse proxy
+#
+# Default-deny public surface (D-16): only explicit /v1/* routes reach the
+# app. Everything else — /, /api/*, /assets/*, /favicon.ico — returns 404 at
+# the proxy. The admin panel is reachable ONLY via the tailnet bind in
+# docker-compose.yml (${TAILSCALE_IP}:8780); Caddy never carries it.
+#
+# Bearer auth (Phase 1) is scoped to /v1/* only, with /v1/health exempt.
+# Because Caddy default-denies /api/* and / publicly, the admin panel exposed
+# via the tailnet does NOT receive bearer auth either — the tailnet IS the
+# trust perimeter (D-08: Tailscale machine keys + ACLs authenticate the
+# device; adding app-level auth would duplicate Tailscale's check and break
+# the existing UI which sends no Authorization header).
+#
+# D-15: all proxy directives use the BARE form — NO header_up /
+# header_down / request_header / response_header mutators. Caddy passes
+# every client header (including X-Request-Id from n8n) through untouched;
+# pino-http in the app then honors it or generates a uuidv7 fallback.
+#
+# Caddy 2.5+ auto-redacts Authorization, Cookie, Set-Cookie, and
+# Proxy-Authorization in access logs by default (Pitfall 9). Image pinned
+# to caddy:2-alpine in docker-compose.yml (verified at 2.11.3). NEVER add
+# `log_credentials true` — it disables the auto-redaction.
+
+# --- Global options ------------------------------------------------------
+{
+	# OPTIONAL — uncomment + add ACME_EMAIL=ops@example.com to .env to receive
+	# Let's Encrypt expiration warnings.
+	# email {$ACME_EMAIL}
+
+	# DEV ONLY — uncomment to point ACME at Let's Encrypt staging and avoid
+	# the production rate limit (5 dupes/week per hostname — Pitfall A).
+	# Staging certs are NOT trusted by browsers; use only while testing.
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# --- Public site — {$DOMAIN} substituted from .env at startup (D-13) ----
+{$DOMAIN} {
+	# Access log to stdout (captured by `docker logs` / `docker compose logs`).
+	# Caddy 2.5+ auto-redacts Authorization, Cookie, Set-Cookie, and
+	# Proxy-Authorization by default — DO NOT add `log_credentials true` here.
+	# Without this `log` block, Caddy serves traffic but emits zero access lines,
+	# which means no audit trail for who hit which route (UAT-4 finding).
+	log {
+		output stdout
+		format json
+	}
+
+	# /v1/health — public liveness endpoint (no bearer auth in Phase 1).
+	# Local cached probe; sub-100ms expected (Pitfall 7). Tight timeouts.
+	handle /v1/health {
+		reverse_proxy app:3000 {
+			transport http {
+				response_header_timeout 3s
+				dial_timeout 2s
+			}
+		}
+	}
+
+	# /v1/ocr — POST returns 202 Accepted fast (dispatcher only); the long
+	# Ollama work happens in the background worker (Phase 1 ASYNC contract).
+	# 10s timeout is huge headroom for the synchronous dispatch.
+	handle /v1/ocr {
+		reverse_proxy app:3000 {
+			transport http {
+				response_header_timeout 10s
+				dial_timeout 2s
+			}
+		}
+	}
+
+	# /v1/jobs/* — polling. Reads from lru-cache, sub-millisecond. Must be
+	# snappy so n8n's poll loop doesn't stall.
+	handle /v1/jobs/* {
+		reverse_proxy app:3000 {
+			transport http {
+				response_header_timeout 5s
+				dial_timeout 2s
+			}
+		}
+	}
+
+	# /v1/* — catch-all for /v1/models and any future /v1/* sub-route.
+	handle /v1/* {
+		reverse_proxy app:3000 {
+			transport http {
+				response_header_timeout 10s
+				dial_timeout 2s
+			}
+		}
+	}
+
+	# DEFAULT-DENY (D-16) — anything not matched above returns 404 publicly.
+	# This is what makes `curl https://${DOMAIN}/api/config` return 404 and
+	# keeps the admin panel off the public internet. Together with D-08, the
+	# tailnet-only admin panel model holds: panel reachable on the tailnet
+	# without bearer auth, never reachable from the public internet.
+	handle {
+		error 404
+	}
+}

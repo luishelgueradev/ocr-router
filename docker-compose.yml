@@ -1,0 +1,112 @@
+# docker-compose.yml — ocr-router deploy stack
+#
+# Two services on a private bridge network (ocr_net):
+#   - app   : built from ./Dockerfile, bound ONLY to the host's tailnet interface
+#             (${TAILSCALE_IP}:8780:3000). NEVER on 0.0.0.0. The admin panel
+#             (`/`, `/api/*`) is reachable from every device on the operator's
+#             tailnet via http://${TAILSCALE_IP}:8780/ (D-05/D-06/D-07).
+#   - caddy : caddy:2-alpine reverse proxy on public 80/443 (+ UDP 443 for
+#             HTTP/3). Routes ONLY /v1/* per Caddyfile; everything else 404s.
+#
+# Healthcheck lives HERE in compose (D-04) — NOT in the Dockerfile — so the
+# image stays generic and Caddy can gate routing on Docker's healthcheck state.
+# The probe is Node-native (Pitfall 2): node:22-bookworm-slim ships NO wget or
+# curl, so the Alpine busybox `wget --spider` probe is replaced with a Node 22
+# global-`fetch` one-liner (no extra system package required).
+#
+# `stop_grace_period: 40s` gives the SIGTERM drain (35s budget) a 5s buffer
+# before Docker SIGKILLs the container (D-12).
+#
+# Dev workflow (D-14): `docker compose up app` starts ONLY the app — Caddy is
+# opt-in because the dependency arrow is one-directional (`caddy` → `app`).
+#
+# Compose v2 syntax: NO top-level `version:` field (Pitfall D — deprecated).
+
+services:
+
+  app:
+    container_name: ocr-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ocr-router:latest
+    restart: unless-stopped
+    env_file: .env
+    # CR-01 fix — explicit NODE_ENV=production so the TAILSCALE_IP fail-closed
+    # guard in server.js fires inside the container. The Dockerfile also sets
+    # this as a default; we override here so the guard never silently skips
+    # if someone rebuilds the image with NODE_ENV omitted.
+    environment:
+      - NODE_ENV=production
+    # D-07 — bind ONLY to the host's tailnet interface. The `${TAILSCALE_IP:?...}`
+    # fail-loud form (CR-02 fix) makes `docker compose up` exit non-zero BEFORE
+    # any container starts when TAILSCALE_IP is unset or empty — previously an
+    # empty value would interpolate to `:8780:3000` and Docker would treat the
+    # empty host as 0.0.0.0, exposing the admin panel on the public internet.
+    # This is now the PRIMARY mitigation for T-01-07; the in-container server.js
+    # guard (CR-01) is the belt-and-suspenders backup. The `ss -tlnp` check on
+    # the VPS remains a runtime verification step.
+    ports:
+      - "${TAILSCALE_IP:?TAILSCALE_IP must be set to the tailnet IP of this VPS (run: tailscale ip -4)}:8780:3000"
+    # D-04 — healthcheck declared in compose (not in Dockerfile). Probe is
+    # local (/v1/health is cached, no upstream traffic). node:22-bookworm-slim
+    # has no wget/curl (Pitfall 2), so use Node 22's global fetch: exit 0 when
+    # the response is ok, 1 otherwise (including on network/parse errors).
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # D-12 — 35s drain + 5s buffer before Docker SIGKILL.
+    stop_grace_period: 40s
+    networks:
+      - ocr_net
+    # NO depends_on on the app service (D-14) — keeps `docker compose up app`
+    # strictly single-service. The dependency arrow is one-directional
+    # (caddy → app), defined on the caddy service below.
+
+  caddy:
+    container_name: ocr-caddy
+    # Pinned to the 2-alpine tag (verified at 2.11.3 — auto-redacts
+    # Authorization, Cookie, Set-Cookie, Proxy-Authorization in access logs
+    # per Pitfall 9). Do NOT switch to :latest.
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # WR-02 fix — principle of least privilege. Previously `env_file: .env`
+    # loaded ALL secrets (API_TOKEN, OLLAMA_API_KEY, OCR_SPACE_API_KEY,
+    # TAILSCALE_IP) into the Caddy container even though Caddy only needs
+    # DOMAIN for the {$DOMAIN} substitution in Caddyfile. Pass only DOMAIN
+    # so /proc/1/environ inside ocr-caddy contains nothing sensitive.
+    environment:
+      - DOMAIN=${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC)
+    volumes:
+      # Read-only mount: Caddy reads the file, never writes it.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # CRITICAL — Let's Encrypt cert persistence. Losing this volume hits
+      # the 5-cert/week rate limit on first re-issue (Pitfall A). DO NOT
+      # `docker compose down -v` in production.
+      - caddy_data:/data
+      - caddy_config:/config
+    # Caddy waits for the app's healthcheck before routing — prevents 502
+    # flap during cold boot. One-directional dependency (caddy → app) keeps
+    # D-14 working (`docker compose up app` does NOT pull caddy in).
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - ocr_net
+
+networks:
+  # Explicit declaration documents intent; bridge is Docker's default driver.
+  ocr_net:
+    driver: bridge
+
+volumes:
+  # Named volumes for Caddy's cert + config persistence. Default local driver.
+  caddy_data:
+  caddy_config:
