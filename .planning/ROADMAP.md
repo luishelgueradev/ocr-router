@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Ported bearer-secured `/v1` async OCR API with page-aware envelope, image OCR, and Caddy/Tailscale deploy (completed 2026-07-23)
 - [x] **Phase 2: Cascade Router** - Automatic engine escalation with confidence heuristic, traceability, cost caps, and graceful degradation (completed 2026-07-23)
-- [ ] **Phase 3: Input Pipeline** - Memory-safe PDF (native + scanned) and multi-format image normalization with per-page results
+- [x] **Phase 3: Input Pipeline** - Memory-safe PDF (native + scanned) and multi-format image normalization with per-page results (completed 2026-07-23)
 - [ ] **Phase 4: Structured Extraction** - Schema-driven, validated JSON extraction via vision LLM
 
 ## Phase Details
@@ -73,7 +73,7 @@ Plans:
 - [x] 03-04-PLAN.md — PDF path: unpdf native-text short-circuit + memory-safe single-page rasterize (pdfinfo cap + pdftoppm) [Wave 2]
 - [x] 03-05-PLAN.md — Image normalization: sharp TIFF/GIF frames + heic-convert/bmp-js decode → PNG frames [Wave 2]
 - [x] 03-06-PLAN.md — Page-pipeline orchestrator + worker runInputJob: one deadline, temp lifecycle, per-page rollup [Wave 3]
-- [ ] 03-07-PLAN.md — Docker integration smoke: real poppler + HEIC + ulimit/kill + temp cleanup (skip-guarded on host) [Wave 4]
+- [x] 03-07-PLAN.md — Docker integration smoke: real poppler + HEIC + ulimit/kill + temp cleanup (skip-guarded on host) [Wave 4]
 
 ### Phase 4: Structured Extraction
 **Goal**: Clients can extract schema-validated JSON from a document via a vision LLM, as a thin increment reusing the finished cascade unchanged.
@@ -95,5 +95,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-07-23 |
 | 2. Cascade Router | 4/4 | Complete   | 2026-07-23 |
-| 3. Input Pipeline | 6/7 | In Progress|  |
+| 3. Input Pipeline | 7/7 | Complete   | 2026-07-23 |
 | 4. Structured Extraction | 0/TBD | Not started | - |
