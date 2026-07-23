@@ -70,20 +70,29 @@ test('VAL-02: fileFilter accepts image/webp', () => {
   assert.equal(acceptResult, true);
 });
 
-test('VAL-02: fileFilter rejects image/gif', () => {
+// Phase 3 (D-06 / INP-03..05): the declared-MIME gate now admits the new
+// formats too. This is only the FIRST, permissive gate — sniffImage in
+// router.js remains authoritative and 422s anything whose real bytes are
+// unknown/spoofed. Admitting the declared type just lets it reach that gate.
+for (const mime of ['application/pdf', 'image/tiff', 'image/heic', 'image/heif', 'image/bmp', 'image/gif']) {
+  test(`VAL-02: fileFilter accepts ${mime} (Phase 3 new format)`, () => {
+    let acceptResult;
+    let cbErr = 'unset';
+    upload.fileFilter({}, { mimetype: mime }, (err, accept) => {
+      cbErr = err;
+      acceptResult = accept;
+    });
+    assert.equal(cbErr, null, `${mime} must not error at the declared-MIME gate`);
+    assert.equal(acceptResult, true, `${mime} must be accepted at the declared-MIME gate`);
+  });
+}
+
+test('VAL-02: fileFilter still rejects application/octet-stream (not an admitted type)', () => {
   let cbErr;
-  upload.fileFilter({}, { mimetype: 'image/gif' }, (err) => {
+  upload.fileFilter({}, { mimetype: 'application/octet-stream' }, (err) => {
     cbErr = err;
   });
   assert.ok(cbErr instanceof multer.MulterError, 'fileFilter must reject non-whitelist with MulterError');
-});
-
-test('VAL-02: fileFilter rejects application/pdf', () => {
-  let cbErr;
-  upload.fileFilter({}, { mimetype: 'application/pdf' }, (err) => {
-    cbErr = err;
-  });
-  assert.ok(cbErr instanceof multer.MulterError);
 });
 
 test('VAL-02: fileFilter rejects image/svg+xml (defense against SVG-with-script)', () => {
