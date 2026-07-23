@@ -45,7 +45,7 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 - [ ] **INP-04**: Scanned PDFs are rendered to images page-by-page and each page is routed through the cascade
 - [ ] **INP-05**: Additional image formats (TIFF multipage, HEIC, BMP, GIF) are normalized before routing
 - [ ] **INP-06**: Multi-page inputs return per-page results with a per-page status rollup; a single failed page does not fail the whole job silently
-- [ ] **INP-07**: Page rasterization streams one page image in memory at a time and enforces page-count, DPI, and pixel caps (memory-safe, decompression-bomb resistant)
+- [x] **INP-07**: Page rasterization streams one page image in memory at a time and enforces page-count, DPI, and pixel caps (memory-safe, decompression-bomb resistant)
 - [ ] **INP-08**: Untrusted decode/rasterization runs in a killable, resource-limited subprocess; temporary files are always cleaned up
 
 ### Structured Extraction
@@ -61,7 +61,7 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 - [x] **OPS-03**: The admin surface binds only to the Tailscale interface, never `0.0.0.0` (fail-closed guard)
 - [x] **OPS-04**: In-flight jobs drain on SIGTERM (graceful shutdown) within a bounded window
 - [x] **OPS-05**: Requests and jobs are traceable via structured logs with request/job IDs; secrets are never logged
-- [ ] **OPS-06**: Native-decode dependencies are pinned to CVE-fixed versions (`sharp>=0.35.0`) and scanned in CI
+- [x] **OPS-06**: Native-decode dependencies are pinned to CVE-fixed versions (`sharp>=0.35.0`) and scanned in CI
 
 ## v2 Requirements
 
@@ -130,9 +130,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | INP-04 | Phase 3 | Pending |
 | INP-05 | Phase 3 | Pending |
 | INP-06 | Phase 3 | Pending |
-| INP-07 | Phase 3 | Pending |
+| INP-07 | Phase 3 | Complete |
 | INP-08 | Phase 3 | Pending |
-| OPS-06 | Phase 3 | Pending |
+| OPS-06 | Phase 3 | Complete |
 | STR-01 | Phase 4 | Pending |
 | STR-02 | Phase 4 | Pending |
 | STR-03 | Phase 4 | Pending |

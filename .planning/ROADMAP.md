@@ -67,7 +67,7 @@ Plans:
   5. Native-decode dependencies are pinned to CVE-fixed versions (`sharp>=0.35.0`) and scanned in CI.
 **Plans**: 7 plans
 Plans:
-- [ ] 03-01-PLAN.md — Dependencies + OPS-06 npm audit gate (green) + boot-validated caps config [Wave 1]
+- [x] 03-01-PLAN.md — Dependencies + OPS-06 npm audit gate (green) + boot-validated caps config [Wave 1]
 - [ ] 03-02-PLAN.md — Extend magic-byte sniff + accepted-type gates for PDF/TIFF/HEIC/BMP/GIF [Wave 1]
 - [ ] 03-03-PLAN.md — Subprocess sandbox seam (spawnCapture) + temp-dir registry + shutdown drain (INP-08) [Wave 1]
 - [ ] 03-04-PLAN.md — PDF path: unpdf native-text short-circuit + memory-safe single-page rasterize (pdfinfo cap + pdftoppm) [Wave 2]
@@ -95,5 +95,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-07-23 |
 | 2. Cascade Router | 4/4 | Complete   | 2026-07-23 |
-| 3. Input Pipeline | 0/7 | Planned | - |
+| 3. Input Pipeline | 1/7 | In Progress|  |
 | 4. Structured Extraction | 0/TBD | Not started | - |
