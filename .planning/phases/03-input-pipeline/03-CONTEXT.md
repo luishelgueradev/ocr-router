@@ -24,7 +24,7 @@ Covers: INP-03, INP-04, INP-05, INP-06, INP-07, INP-08, OPS-06. Does NOT add str
 
 ### Image normalization (INP-05)
 - **D-04:** Use **`sharp`** (`^0.35.3`, prebuilt libvips — no apt libvips) for TIFF (multipage via `{pages:-1}`/`{page:n}`), WebP, GIF, resize, grayscale, DPI/density normalization → a routable PNG/JPEG. Multipage TIFF/GIF → one page per frame (page-aware).
-- **D-05:** **HEIC** → **`heic-convert`** (`^2.1.0`, WASM libheif — no system libheif/HEVC build) to a JPEG/PNG buffer, then hand to `sharp`. **BMP** → **`@vingle/bmp-js`** decode → raw pixels → `sharp` (libvips prebuilt cannot read BMP). Both are pure-JS/WASM — no system deps.
+- **D-05:** **HEIC** → **`heic-convert`** (`^2.1.0`, WASM libheif — no system libheif/HEVC build) to a JPEG/PNG buffer, then hand to `sharp`. **BMP** → **`@vingle/bmp-js`** decode → raw pixels → `sharp` (libvips prebuilt cannot read BMP). Both are pure-JS/WASM — no system deps. **AMENDED (research):** use **`@vingle/bmp-js@^0.2.5`** — the CLAUDE.md `^0.1.0` pin does NOT exist on npm (only 0.2.x is published).
 
 ### Content sniffing extension (INP-02 continuation)
 - **D-06:** Extend `lib/v1/sniff.js` magic-byte detection to recognize **PDF** (`%PDF`), **TIFF** (`II*\0`/`MM\0*`), **HEIC/HEIF** (`ftyp` brand `heic`/`heif`/`heix`/`mif1`), **BMP** (`BM`), **GIF** (`GIF87a`/`GIF89a`) in addition to PNG/JPEG/WebP. Type is decided by magic bytes, never the client content-type; spoofed/unknown → typed `422`. The multipart size limit stays enforced (API-07).
@@ -36,7 +36,7 @@ Covers: INP-03, INP-04, INP-05, INP-06, INP-07, INP-08, OPS-06. Does NOT add str
 - **D-08:** Multi-page inputs return **per-page results in the existing page-aware envelope** (`pages[]` from Phase-1 D-04, now genuinely multi-element), **page order preserved**. Add a **per-page status rollup**: job result carries `status_rollup: 'completed' | 'completed_with_errors'` — one failed page is **recorded (with its error) but does NOT fail the whole job**, and is never silently dropped. Each page records its engine/confidence/error.
 
 ### Dependency security (OPS-06)
-- **D-09:** Pin **`sharp>=0.35.0`** (CVE-fixed) and the other native/WASM decoders to the CLAUDE.md versions; add a **CI dependency scan** (`npm audit` gate, or equivalent) so a future vulnerable pin is caught. Document the audit step.
+- **D-09:** Pin **`sharp>=0.35.0`** (CVE-fixed) and the other native/WASM decoders to the CLAUDE.md versions; add a **CI dependency scan** (`npm audit` gate, or equivalent) so a future vulnerable pin is caught. Document the audit step. **AMENDED (research):** the audit gate would **red-fail on the first run** — current prod deps (`axios`, `form-data`) already carry 2 high + 2 moderate advisories. So the gate must ship WITH remediation: bump the offending deps to fixed versions AND/OR scope the gate (e.g. `--audit-level=high` with a documented, time-boxed allowlist for anything unfixable). The gate must be GREEN when the phase completes, not aspirational.
 
 ### Integration & memory model
 - **D-10:** The input pipeline sits **before** the cascade: `upload → sniff → (PDF: native-text-or-rasterize per page) | (image: normalize to N page frames) → for each page: native-text short-circuit OR runCascade(pageImage) → assemble ordered pages[] + rollup`. The single-concurrency worker processes **one page image in memory at a time** (INP-07); buffers are released between pages. Reuse the Phase-2 cascade unchanged.
