@@ -23,7 +23,7 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 - [x] **JOB-01**: The job result envelope is page-aware from day one — results are returned as a `pages[]` array plus concatenated text, even for a single-image job
 - [ ] **JOB-02**: Each job records full cascade traceability: engines attempted, winning engine, per-engine timing, confidence, and a `low_confidence` flag when no engine cleared threshold
 - [x] **JOB-03**: Completed/failed jobs are swept from the in-memory store after a configurable TTL so the process does not leak memory
-- [ ] **JOB-04**: Each job honors a single authoritative timeout; a hung provider or subprocess is aborted rather than wedging the worker
+- [x] **JOB-04**: Each job honors a single authoritative timeout; a hung provider or subprocess is aborted rather than wedging the worker
 
 ### Cascade Routing
 
@@ -125,7 +125,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CASC-08 | Phase 2 | Pending |
 | CASC-09 | Phase 2 | Complete |
 | JOB-02 | Phase 2 | Pending |
-| JOB-04 | Phase 2 | Pending |
+| JOB-04 | Phase 2 | Complete |
 | INP-03 | Phase 3 | Pending |
 | INP-04 | Phase 3 | Pending |
 | INP-05 | Phase 3 | Pending |

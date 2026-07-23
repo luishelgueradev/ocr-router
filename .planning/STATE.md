@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-23T21:00:09.879Z"
+last_updated: "2026-07-23T21:05:48.602Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
   percent: 25
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-23)
 ## Current Position
 
 Phase: 2 (Cascade Router) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-23
 
-Progress: [██████░░░░] 57%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [██████░░░░] 57%
 | Phase 1 P01-02 | 12 | 2 tasks | 17 files |
 | Phase 1 P01-03 | 7 | 2 tasks | 5 files |
 | Phase 02-cascade-router P01 | 7min | 3 tasks | 5 files |
+| Phase 02-cascade-router P02 | 2min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [01-03]: Deploy stack migrated to node:22-bookworm-slim + poppler-utils + tini (/usr/bin/tini); Node-native fetch healthcheck (bookworm has no wget/curl); ocr-router:latest; docker compose build verified real; full npm test 189/189 green
 - [Phase 02]: Cascade routing is declarative data in lib/v1/cascade/config.js (no engine-selecting branches, CASC-09)
 - [Phase 02]: Confidence heuristic is a pure env-tunable function; threshold numbers provisional pending live-key calibration (deferred ops)
+- [Phase ?]: Job AbortSignal composed with per-engine timeout via AbortSignal.any in ocr.space; ollama axios gets {signal}; provider aborts fall through as ok:false (JOB-04)
+- [Phase ?]: ocr.space overlay returns scalar overlay.wordCount+HasOverlay+ocrExitCode only, no fabricated confidence or raw geometry (D-03 amended)
 
 ### Pending Todos
 
@@ -94,6 +97,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-23T20:58:43.452Z
+Last session: 2026-07-23T21:05:32.999Z
 Stopped at: Phase 2 context gathered
 Resume file: None
