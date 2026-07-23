@@ -51,15 +51,7 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-function findModel(modelId) {
-  return models.find(m => m.id === modelId) || null;
-}
-
-function envKeyFor(provider) {
-  if (provider === 'ollama')   return process.env.OLLAMA_API_KEY || null;
-  if (provider === 'ocrspace') return process.env.OCR_SPACE_API_KEY || null;
-  return null;
-}
+const { findModel, envKeyFor, providerKeyPresent } = require('./lib/v1/engines');
 
 app.post('/api/ocr', async (req, res) => {
   try {
@@ -119,14 +111,9 @@ if (!isDev && (!process.env.TAILSCALE_IP || process.env.TAILSCALE_IP === PLACEHO
 }
 
 // D-08 — zero-engine fail-closed boot guard. An engine is "configured" only when
-// its provider has an env key present (ollama→OLLAMA_API_KEY, ocrspace→OCR_SPACE_API_KEY).
+// its provider has an env key present (providerKeyPresent, shared via lib/v1/engines).
 // With no usable engine every /v1/ocr request would fail, so refuse to start —
 // mirroring the API_TOKEN / TAILSCALE_IP fail-closed guards above.
-function providerKeyPresent(provider) {
-  if (provider === 'ollama')   return Boolean(process.env.OLLAMA_API_KEY);
-  if (provider === 'ocrspace') return Boolean(process.env.OCR_SPACE_API_KEY);
-  return false;
-}
 const configuredEngines = models.filter(m => providerKeyPresent(m.provider));
 if (configuredEngines.length === 0) {
   throw new Error('No OCR engine configured — set OLLAMA_API_KEY and/or OCR_SPACE_API_KEY. Refusing to start (zero-engine guard, D-08).');
@@ -149,12 +136,10 @@ app.use((err, req, res, next) => {
 // was actually applied (intFromEnv would have already thrown on a bad value).
 const { MAX_UPLOAD_BYTES } = require('./lib/v1/upload');
 const { MAX_QUEUE_DEPTH } = require('./lib/v1/worker');
-const { JOB_MAX } = (() => {
-  // jobs.js does not export JOB_MAX today; recompute the same way to avoid
-  // module surface changes. intFromEnv is the source of truth.
-  const { intFromEnv } = require('./lib/v1/env');
-  return { JOB_MAX: intFromEnv('JOB_STORE_MAX', 500) };
-})();
+// Import the store cap from jobs.js (the single source of truth) rather than
+// recomputing it — a recomputed default could silently diverge from the store's
+// actual cap and mislabel the "server ready" log (MR-03).
+const { JOB_MAX } = require('./lib/v1/jobs');
 
 const httpServer = app.listen(PORT, () => {
   logger.info(
