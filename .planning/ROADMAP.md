@@ -47,7 +47,12 @@ Plans:
   3. Each job trace records engines attempted, winning engine, per-engine timing, confidence, and the `low_confidence` flag; a single authoritative job timeout aborts a hung provider rather than wedging the single-concurrency worker.
   4. A client can select a named profile (`fast`/`balanced`/`quality`, with a default when unspecified) or force a specific engine/model, and forcing an engine that lacks the required capability is rejected with a typed error.
   5. The cascade is bounded by max-tier, max-attempts, and a cumulative time budget so no request runs away in cost/latency; it assembles only from engines whose keys/config are present (a missing key is a clean tier drop, not a per-request error) and fails closed at boot only if zero engines are configured. Routing chains, profiles, thresholds, and capabilities are declarative config, not hard-coded branches.
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 02-01-PLAN.md — Pure config-driven confidence heuristic + declarative cascade config (10-fixture TDD suite)
+- [ ] 02-02-PLAN.md — Thread job AbortSignal into both providers + enable ocr.space overlay word-count signal
+- [ ] 02-03-PLAN.md — Cascade runner + trace: walk/fall-through/best-so-far/budget/quota short-circuit (fall-through matrix TDD)
+- [ ] 02-04-PLAN.md — Wire cascade into worker + router: profiles, forced-engine bypass/422, trace, profiles discovery
 
 ### Phase 3: Input Pipeline
 **Goal**: The service accepts PDFs (native and scanned) and additional image formats, turning any upload into memory-safe per-page results routed through the already-proven cascade.
@@ -81,6 +86,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-07-23 |
-| 2. Cascade Router | 0/TBD | Not started | - |
+| 2. Cascade Router | 0/4 | Planned | - |
 | 3. Input Pipeline | 0/TBD | Not started | - |
 | 4. Structured Extraction | 0/TBD | Not started | - |
