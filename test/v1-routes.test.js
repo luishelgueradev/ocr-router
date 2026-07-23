@@ -14,6 +14,11 @@
 
 // Set required env BEFORE requiring auth.js (it reads API_TOKEN at module load)
 process.env.API_TOKEN = 'route-test-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+// Configure both providers so the forced-model success paths below represent a
+// *configured* engine. The router now fails closed (422) when a forced model's
+// provider has no API key (HR-01), so exercising the 202 path requires the keys.
+process.env.OLLAMA_API_KEY = process.env.OLLAMA_API_KEY || 'route-test-ollama-key';
+process.env.OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY || 'route-test-ocrspace-key';
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
