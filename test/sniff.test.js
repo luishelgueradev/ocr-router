@@ -62,3 +62,81 @@ test('sniffImage does not match text/HTML files', () => {
   const html = Buffer.from('<!DOCTYPE html><html><body></body></html>');
   assert.equal(sniffImage(html), null);
 });
+
+// --- Phase 3 (D-06 / INP-03..05): PDF, TIFF, HEIC/HEIF, BMP, GIF magic bytes.
+// Type decided by magic bytes only — never the client content-type. Spoofed /
+// unknown bytes still fall through to null (typed 422 upstream).
+
+test('sniffImage identifies PDF by %PDF signature', () => {
+  const pdf = Buffer.from('%PDF-1.7\n%\xE2\xE3\xCF\xD3', 'binary');
+  assert.equal(sniffImage(pdf), 'application/pdf');
+});
+
+test('sniffImage identifies little-endian TIFF (49 49 2A 00)', () => {
+  const tiffLE = Buffer.from([0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00]);
+  assert.equal(sniffImage(tiffLE), 'image/tiff');
+});
+
+test('sniffImage identifies big-endian TIFF (4D 4D 00 2A)', () => {
+  const tiffBE = Buffer.from([0x4D, 0x4D, 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08]);
+  assert.equal(sniffImage(tiffBE), 'image/tiff');
+});
+
+test('sniffImage identifies HEIC by ftyp box with major brand heic', () => {
+  // ISO-BMFF: [4-byte box size][ftyp][major brand][minor version]...
+  const heic = Buffer.from('\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic', 'binary');
+  assert.equal(sniffImage(heic), 'image/heic');
+});
+
+test('sniffImage identifies HEIF by ftyp box with major brand mif1', () => {
+  const heif = Buffer.from('\x00\x00\x00\x18ftypmif1\x00\x00\x00\x00mif1heic', 'binary');
+  assert.equal(sniffImage(heif), 'image/heic');
+});
+
+test('sniffImage identifies HEIC variant brand heix', () => {
+  const heix = Buffer.from('\x00\x00\x00\x18ftypheix\x00\x00\x00\x00heixheic', 'binary');
+  assert.equal(sniffImage(heix), 'image/heic');
+});
+
+test('sniffImage rejects ftyp box with non-image brand mp42 (.heic-named MP4 must NOT pass)', () => {
+  // T-03-02 false-positive guard — an MP4/MOV ftyp box must not sniff as HEIC.
+  const mp4 = Buffer.from('\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom', 'binary');
+  assert.equal(sniffImage(mp4), null);
+});
+
+test('sniffImage rejects ftyp box with isom brand (generic ISO base media)', () => {
+  const isom = Buffer.from('\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2', 'binary');
+  assert.equal(sniffImage(isom), null);
+});
+
+test('sniffImage identifies BMP by BM signature (42 4D)', () => {
+  const bmp = Buffer.from([0x42, 0x4D, 0x36, 0x00, 0x00, 0x00, 0x00, 0x00]);
+  assert.equal(sniffImage(bmp), 'image/bmp');
+});
+
+test('sniffImage identifies GIF87a', () => {
+  const gif = Buffer.from('GIF87a\x10\x00\x10\x00', 'binary');
+  assert.equal(sniffImage(gif), 'image/gif');
+});
+
+test('sniffImage identifies GIF89a', () => {
+  const gif = Buffer.from('GIF89a\x10\x00\x10\x00', 'binary');
+  assert.equal(sniffImage(gif), 'image/gif');
+});
+
+test('sniffImage rejects truncated PDF header (< 4 bytes)', () => {
+  assert.equal(sniffImage(Buffer.from('%PD', 'binary')), null);
+});
+
+test('sniffImage rejects truncated ftyp box (< 12 bytes, brand unreadable)', () => {
+  const tiny = Buffer.from('\x00\x00\x00\x18ftyp', 'binary'); // 8 bytes — no brand
+  assert.equal(sniffImage(tiny), null);
+});
+
+test('sniffImage rejects truncated BMP (single byte)', () => {
+  assert.equal(sniffImage(Buffer.from([0x42])), null);
+});
+
+test('sniffImage rejects GIF-like but incomplete signature', () => {
+  assert.equal(sniffImage(Buffer.from('GIF8', 'binary')), null);
+});
