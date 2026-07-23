@@ -65,7 +65,15 @@ Plans:
   3. Multi-page inputs return per-page results with a per-page status rollup (`completed` / `completed_with_errors`), so one failed page neither fails the whole job nor is silently dropped, and page order is preserved.
   4. Rasterization streams exactly one page image in memory at a time and enforces page-count, DPI, and pixel caps, so a large or decompression-bomb PDF (100-page or huge-MediaBox) cannot exhaust the memory budget.
   5. Native-decode dependencies are pinned to CVE-fixed versions (`sharp>=0.35.0`) and scanned in CI.
-**Plans**: TBD
+**Plans**: 7 plans
+Plans:
+- [ ] 03-01-PLAN.md — Dependencies + OPS-06 npm audit gate (green) + boot-validated caps config [Wave 1]
+- [ ] 03-02-PLAN.md — Extend magic-byte sniff + accepted-type gates for PDF/TIFF/HEIC/BMP/GIF [Wave 1]
+- [ ] 03-03-PLAN.md — Subprocess sandbox seam (spawnCapture) + temp-dir registry + shutdown drain (INP-08) [Wave 1]
+- [ ] 03-04-PLAN.md — PDF path: unpdf native-text short-circuit + memory-safe single-page rasterize (pdfinfo cap + pdftoppm) [Wave 2]
+- [ ] 03-05-PLAN.md — Image normalization: sharp TIFF/GIF frames + heic-convert/bmp-js decode → PNG frames [Wave 2]
+- [ ] 03-06-PLAN.md — Page-pipeline orchestrator + worker runInputJob: one deadline, temp lifecycle, per-page rollup [Wave 3]
+- [ ] 03-07-PLAN.md — Docker integration smoke: real poppler + HEIC + ulimit/kill + temp cleanup (skip-guarded on host) [Wave 4]
 
 ### Phase 4: Structured Extraction
 **Goal**: Clients can extract schema-validated JSON from a document via a vision LLM, as a thin increment reusing the finished cascade unchanged.
@@ -87,5 +95,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-07-23 |
 | 2. Cascade Router | 4/4 | Complete   | 2026-07-23 |
-| 3. Input Pipeline | 0/TBD | Not started | - |
+| 3. Input Pipeline | 0/7 | Planned | - |
 | 4. Structured Extraction | 0/TBD | Not started | - |
