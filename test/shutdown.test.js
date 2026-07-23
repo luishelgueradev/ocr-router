@@ -1,6 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const jobs = require('../lib/v1/jobs');
+const temp = require('../lib/v1/input/temp');
 
 // require.cache delete works ONLY while server.js is NOT imported by these tests; if E2E tests
 // are added later that boot server.js, export a _resetIdempotency() helper from shutdown.js instead.
@@ -116,6 +118,33 @@ test('drainAndCancel: idempotent — second concurrent call is a no-op', async (
   const j = store.get('j1');
   assert.equal(j.status, 'failed');
   assert.equal(j.error.code, 'shutdown_cancelled');
+});
+
+// INP-08 / Pitfall 2 — mid-job SIGTERM must leak NO temp dir. drainAndCancel
+// drains the temp-dir registry as part of its shutdown sequence, so a job that
+// was rasterizing when SIGTERM arrived has its temp dir removed even though its
+// own `finally` never ran. Also asserts the pre-existing job-drain behavior is
+// unchanged (a queued job is still failed{shutdown_cancelled}).
+test('drainAndCancel: drains registered temp dirs on mid-job SIGTERM (Pitfall 2)', async (t) => {
+  const { drainAndCancel } = freshShutdown();
+  const { store, fakeJobs } = buildFakeJobs();
+  const fakeLimiter = { stop: async () => {} };
+  t.after(() => temp.drainAllTempDirs());
+
+  // Simulate a job caught mid-raster: it has a live temp dir on disk.
+  const dir = await temp.createJobTempDir();
+  fs.writeFileSync(require('node:path').join(dir, 'page-1.png'), 'x');
+  assert.ok(fs.existsSync(dir), 'temp dir exists before shutdown');
+
+  store.set('jmid', { job_id: 'jmid', status: 'queued' });
+
+  await drainAndCancel(0, { jobs: fakeJobs, limiter: fakeLimiter });
+
+  // Temp dir gone (no leak) AND existing drain semantics intact.
+  assert.ok(!fs.existsSync(dir), 'temp dir removed by the shutdown drain');
+  const j = store.get('jmid');
+  assert.equal(j.status, 'failed', 'queued job still failed by the drain');
+  assert.equal(j.error.code, 'shutdown_cancelled', 'existing shutdown_cancelled semantics unchanged');
 });
 
 // Test 5: iterateAll() yields live references in the real jobs module (I-02 acceptance)
