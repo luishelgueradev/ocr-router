@@ -255,6 +255,45 @@ test('one failed page is recorded (with error) but does NOT fail the whole job',
   assert.equal(out.text, 'p1\n\np3');
 });
 
+// WR-02 — an engine-less cascade result (budget exhausted, every tier failed)
+// must be a PAGE ERROR. runCascade returns {text:'', engineId:null} with no
+// `error` field in that case, which the pipeline used to record as a plain
+// success — so a job whose deadline blew mid-way reported a clean 'completed'
+// rollup with silently missing content.
+test('an engine-less route result is a page error, not a silent empty success (WR-02)', async (t) => {
+  const tempDir = mkTemp();
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  // Frame 2 comes back with no engine — exactly runCascade's budget-exhausted shape.
+  const routePage = makeRoutePage((b64, mime, n) => (n === 2
+    ? { text: '', engineId: null, provider: null, confidence: null, trace: { stopped_reason: 'budget_exhausted' } }
+    : { text: `p${n}`, engineId: 'ollama', provider: 'ollama', confidence: 0.8 }));
+
+  const out = await runPipeline({ buffer: TIFF, sniffedType: 'image/tiff', tempDir, routePage });
+
+  assert.equal(out.pages.length, 3, 'the page is still recorded');
+  assert.ok(out.pages[1].error, 'the engine-less page carries an error');
+  assert.equal(out.pages[1].error.code, 'budget_exhausted', 'the cascade stop reason is surfaced');
+  assert.equal(out.pages[1].engine, null);
+  assert.equal(
+    out.status_rollup, 'completed_with_errors',
+    'the job must NOT claim a clean completion when a page produced nothing',
+  );
+  assert.equal(out.pages[0].text, 'p1', 'other pages are unaffected');
+  assert.equal(out.pages[2].text, 'p3');
+});
+
+test('an engine-less result with no stop reason still fails typed (WR-02)', async (t) => {
+  const tempDir = mkTemp();
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const routePage = makeRoutePage(() => ({ text: '', engineId: null, provider: null, confidence: null }));
+  const out = await runPipeline({ buffer: TIFF, sniffedType: 'image/tiff', tempDir, routePage });
+
+  assert.equal(out.status_rollup, 'completed_with_errors');
+  assert.ok(out.pages.every((p) => p.error && p.error.code === 'no_engine_result'), 'default typed code');
+});
+
 test('over-cap page count rejects BEFORE any rasterization', async (t) => {
   const tempDir = mkTemp();
   t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));

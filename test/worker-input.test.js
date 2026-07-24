@@ -248,6 +248,69 @@ test('runInputJob: a temp-cleanup failure does not clobber a successful job (WR-
   assert.equal(temp._activeDirsForTest().length, 0, 'the dir is deregistered even when rm fails');
 });
 
+// WR-02 — once the job deadline is spent, `deadline - Date.now()` goes NEGATIVE
+// and runCascade breaks immediately with {text:'', engineId:null} and no error.
+// Those pages must be recorded as errors, not as clean empty successes.
+test('runInputJob: pages routed past the job deadline are errors, not empty successes (WR-02)', async (t) => {
+  clearLines();
+  t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
+  t.after(() => { fakeCascadeImpl = null; });
+
+  // A controllable clock offset. The first page consumes the whole job budget
+  // (a slow provider), so pages 2 and 3 are attempted PAST the deadline —
+  // exactly the production scenario.
+  const realNow = Date.now;
+  let offset = 0;
+  Date.now = () => realNow() + offset;
+  t.after(() => { Date.now = realNow; });
+
+  const budgets = [];
+  // Model runCascade faithfully: a non-positive budget yields an engine-less
+  // result with NO error field (runner.js only sets `error` for
+  // no_engine_configured).
+  fakeCascadeImpl = async ({ budgetMs }) => {
+    budgets.push(budgetMs);
+    offset = CAPS.MAX_JOB_MS + 1000; // page 1 burned the entire budget
+    if (budgetMs <= 0) {
+      return {
+        result: { text: '', engineId: null, provider: null, confidence: null },
+        trace: { winning_engine: null, elapsed_ms: 0, low_confidence: false, stopped_reason: 'budget_exhausted' },
+      };
+    }
+    return {
+      result: { text: 'ocr', engineId: 'ollama-x', provider: 'ollama', confidence: 0.9 },
+      trace: { winning_engine: 'ollama-x', elapsed_ms: 1, low_confidence: false },
+    };
+  };
+
+  const jobId = 'input-deadline-' + realNow();
+  jobs.create(jobId, { model_id: 'cascade:balanced' });
+
+  await runJob(jobId, {
+    model: null, forced: false, profile: 'balanced',
+    buffer: TIFF, mimeType: 'image/tiff', mode: 'quality',
+    apiKey: null, preset: undefined, requestId: 'input-req-deadline',
+  });
+  Date.now = realNow;
+  await flush();
+
+  const job = jobs.get(jobId);
+  assert.ok(budgets.every((b) => b >= 0), `a negative budget must never reach runCascade (${budgets})`);
+  assert.equal(budgets.length, 1, 'past-deadline pages short-circuit — no wasted provider call');
+
+  assert.equal(job.result.pages.length, 3, 'no page is dropped');
+  assert.equal(job.result.pages[0].engine, 'ollama-x', 'the page that fit the budget still succeeded');
+  for (const p of job.result.pages.slice(1)) {
+    assert.ok(p.error, 'a past-deadline page carries an error');
+    assert.equal(p.error.code, 'job_deadline_exceeded', 'typed as a deadline overrun');
+    assert.equal(p.engine, null, 'and claims no engine');
+  }
+  assert.equal(
+    job.result.status_rollup, 'completed_with_errors',
+    'a blown deadline is visible to the client, not hidden behind "completed"',
+  );
+});
+
 test('runInputJob: single-image PNG still routes to the unchanged forced/cascade path', async (t) => {
   clearLines();
   t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
