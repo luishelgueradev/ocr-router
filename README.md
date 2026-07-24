@@ -1,155 +1,233 @@
 # ocr-router
 
-A dockerized document-recognition service exposed as a bearer-secured `/v1` HTTP
-API. A client submits a file (image today; PDF and more later) and the service
-returns extracted text via an **async job model** (`202 + job_id` → poll
-`GET /v1/jobs/:id`). The response is a **page-aware envelope** from day one so
-multi-page documents are additive, not breaking.
+Servicio dockerizado de reconocimiento de documentos, expuesto como una API HTTP `/v1` con token bearer. Un cliente sube un archivo (imagen o PDF) y el servicio **rutea cada request por una cascada ordenada de motores** — primero el barato/rápido (`ocr.space`), escalando a LLMs de visión (Ollama Cloud) de más calidad — hasta producir un resultado usable. Todo funciona con un **modelo de jobs asíncrono** (`202 + job_id` → poll `GET /v1/jobs/:id`) y una **respuesta page-aware** (`pages[]`) para documentos multipágina.
 
-Built for developers and automation pipelines (n8n and similar) that need
-reliable text extraction without hand-managing multiple OCR providers, keys, and
-fallback logic. The eventual product routes each request through an ordered
-cascade of engines (cheap/fast first, escalating to cloud vision LLMs); this
-**Phase 1 walking skeleton** runs a single engine per request with the envelope
-and traceability fields shaped for the cascade to slot in later.
+Está pensado para desarrolladores y pipelines de automatización (n8n y similares) que necesitan extracción de texto/datos confiable sin administrar a mano múltiples proveedores, claves y lógica de fallback. Además del texto libre, ofrece **extracción estructurada** (`mode=structured`): se pasa un JSON Schema y se recibe JSON validado contra ese esquema, extraído por un LLM de visión con decodificación restringida.
 
-> **Core value:** never fail to return the best available text/data for a
-> document.
+> **Valor central:** nunca fallar en devolver el mejor texto/dato disponible para un documento — la cascada escalona la calidad automáticamente.
 
-## API surface (`/v1`, bearer-secured)
+## Tecnologías
 
-| Method | Route             | Purpose                                                        |
-| ------ | ----------------- | ------------------------------------------------------------- |
-| POST   | `/v1/ocr`         | Submit one file (multipart, field `file`) → `202 { job_id }`  |
-| GET    | `/v1/jobs/:id`    | Poll job status → terminal `succeeded` / `failed` + result    |
-| GET    | `/v1/models`      | List configured engines + their `modes_supported`             |
-| GET    | `/v1/health`      | Unauthenticated liveness probe                                 |
+| Categoría | Tecnología |
+|-----------|-----------|
+| Lenguaje | Node.js >= 22 |
+| HTTP | Express 4 |
+| Subida de archivos | multer 2 |
+| Cola / concurrencia | bottleneck (worker de concurrencia 1) |
+| Store de jobs | lru-cache (TTL + máx. entradas) |
+| Logging | pino / pino-http |
+| PDF (texto nativo) | unpdf (PDF.js serverless) |
+| PDF (rasterización) | poppler-utils (`pdftoppm` / `pdfinfo`) |
+| Imágenes (TIFF/WebP/GIF/resize) | sharp (libvips) |
+| HEIC | heic-convert (WASM) |
+| BMP | @vingle/bmp-js |
+| Validación de esquema | ajv 8 |
+| Motores OCR | ocr.space + Ollama Cloud (visión) |
+| Reverse proxy | Caddy 2 |
+| Ingress (home) | Cloudflare Tunnel (cloudflared) |
+| Infraestructura | Docker + Docker Compose |
+| Tests | `node --test` |
 
-All `/v1/*` routes except `/v1/health` require `Authorization: Bearer <API_TOKEN>`.
-Phase 1 accepts **PNG / JPEG / WebP**, one file per request, type detected by
-magic-byte sniff (never the client `Content-Type`). Oversized ⇒ `413`;
-unsupported/spoofed ⇒ `422`; full queue ⇒ `503 server_busy` + `Retry-After`.
+## Requisitos previos
 
-## Required environment
+- **Node.js >= 22** (para desarrollo local) o **Docker + Docker Compose v2** (para el stack).
+- Al menos una clave de proveedor OCR:
+  - **Ollama Cloud** (`OLLAMA_API_KEY`) — necesaria para `mode=structured` y los tiers LLM de visión.
+  - **ocr.space** (`OCR_SPACE_API_KEY`) — tier OCR clásico/barato.
+- Según el modo de deploy: un **Cloudflare Tunnel** (token) o un **dominio público + IP de Tailscale**.
 
-Copy `.env.example` to `.env` and fill in the values.
+## Instalación
 
-| Variable            | Required | Notes                                                                                     |
-| ------------------- | -------- | ----------------------------------------------------------------------------------------- |
-| `API_TOKEN`         | **yes**  | Bearer token for `/v1/*`. Generate with `openssl rand -hex 32`. Server refuses to boot on the placeholder. |
-| `TAILSCALE_IP`      | **yes**  | Tailnet IP of this host (`tailscale ip -4`). The admin panel binds here only — never `0.0.0.0`. Fail-closed. |
-| `DOMAIN`            | **yes**  | Public domain (A record) for Caddy automatic HTTPS.                                        |
-| `OLLAMA_API_KEY`    | cond.    | Ollama Cloud key for the vision LLM engines.                                               |
-| `OCR_SPACE_API_KEY` | optional | Enables the `ocr.space` engine (preferred default when set). Leave empty to disable.       |
-| `PORT`              | optional | App port inside the container. Default `3000`.                                             |
-| `MAX_UPLOAD_BYTES`  | optional | Upload size cap. Default `10485760` (10 MB).                                               |
-| `LOG_LEVEL`         | optional | pino level. Default `info`.                                                                |
-| `MAX_QUEUE_DEPTH`   | optional | Queued jobs before `503`. Default `10`.                                                    |
-| `JOB_STORE_MAX`     | optional | Max in-memory job records (LRU). Default `500`.                                            |
+### Camino principal — instalador automático
 
-At least one provider key must be present at boot, or the service fails closed
-(zero-engine guard, D-08).
-
-## Deploy (Docker Compose + Caddy)
-
-The stack is two services on a private bridge network:
-
-- **app** — this image, bound **only** to `${TAILSCALE_IP}:8780:3000` (tailnet).
-  The admin/demo panel (`/`, `/api/*`) is reachable only over the tailnet.
-- **caddy** — `caddy:2-alpine` on public `80/443` (+ `443/udp` for HTTP/3),
-  automatic HTTPS, default-deny: only `/v1/*` is proxied; everything else `404`s.
-
-The image is `node:22-bookworm-slim` with `tini` (PID 1 signal forwarding) and
-`poppler-utils` (installed now for the Phase 3 PDF path; unused in Phase 1). The
-healthcheck lives in compose and uses a Node-native `fetch` probe (bookworm-slim
-ships no `wget`/`curl`).
+El proyecto trae un `install.sh` autosuficiente que instala dependencias, prepara el directorio, clona el repo, **pregunta el modo de deploy**, arma el `.env` interactivamente (genera el `API_TOKEN`, pide las claves de proveedor y el token/dominio) y levanta el stack:
 
 ```bash
-# 1. Configure
-cp .env.example .env
-# edit .env: set API_TOKEN, TAILSCALE_IP, DOMAIN, and at least one provider key
-
-# 2. Build the image (the D-11 "build" gate)
-docker compose build
-
-# 3. Run the full stack (app + Caddy)
-docker compose up -d
-
-# Dev: run ONLY the app (Caddy is opt-in; dependency is one-directional)
-docker compose up app
+curl -sL https://raw.githubusercontent.com/luishelgueradev/ocr-router/main/install.sh | bash
 ```
 
-`stop_grace_period` is 40s, giving the SIGTERM drain (35s budget) a 5s buffer to
-finish in-flight jobs before Docker SIGKILLs the container.
+No hace falta copiar `.env.example` ni editar nada a mano — el instalador genera el `.env` completo. Ver [DEPLOY.md](DEPLOY.md) para el detalle de ambos modos.
 
-## Local development
+### Desarrollo local
 
 ```bash
-npm install          # Node >= 22
-cp .env.example .env  # fill in values (set NODE_ENV unset/development to relax the tailnet guard locally)
-node server.js        # or: npm run web
+git clone https://github.com/luishelgueradev/ocr-router.git
+cd ocr-router
+npm install
+cp .env.example .env   # completar valores; con NODE_ENV=development se relaja el guard de Tailscale
+node server.js         # o: npm run web  → escucha en :3000
 ```
+
+## Configuración
+
+El instalador genera el `.env`. Para setup manual, la plantilla es `.env.example`. Variables:
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `API_TOKEN` | — | **Obligatoria.** Bearer token de `/v1/*`. Generar con `openssl rand -hex 32`. El server no arranca con el placeholder. |
+| `OLLAMA_API_KEY` | — | Clave de Ollama Cloud (motores LLM de visión + `mode=structured`). |
+| `OCR_SPACE_API_KEY` | — | Clave de ocr.space (tier OCR clásico). |
+| `TUNNEL_TOKEN` | — | Token del Cloudflare Tunnel (solo modo tunnel). |
+| `DOMAIN` | — | Dominio público para el HTTPS automático de Caddy (solo modo vps). |
+| `TAILSCALE_IP` | — | IP tailnet del host; ata el panel admin ahí (solo modo vps). |
+| `APP_MEM_LIMIT` | `1g` | Límite de memoria del contenedor (cgroup). |
+| `PORT` | `3000` | Puerto interno de la app. |
+| `LOG_LEVEL` | `info` | Nivel de pino (trace/debug/info/warn/error). |
+| `MAX_UPLOAD_BYTES` | `10485760` | Tamaño máximo de subida (10 MB). |
+| `MAX_QUEUE_DEPTH` | `10` | Jobs en cola antes de `503 server_busy`. |
+| `JOB_STORE_MAX` | `500` | Máx. de jobs en memoria (LRU). |
+
+Debe existir **al menos una** de `OLLAMA_API_KEY` / `OCR_SPACE_API_KEY`, o el servicio falla al arrancar (guard de cero-motores). El `API_TOKEN` y (en modo vps) `TAILSCALE_IP` son fail-closed: el server se niega a bootear si faltan o son placeholders.
+
+## Uso
+
+| Comando | Descripción |
+|---------|-------------|
+| `npm run web` | Arranca el server (`node server.js`) en `:3000`. |
+| `npm test` | Corre todas las suites (`node --test`) + `scripts/verify-redaction.js`. |
+| `npm run audit` | Auditoría de dependencias de producción (`npm audit --omit=dev --audit-level=high`). |
+| `bash scripts/docker-smoke.sh` | Smoke de integración dentro de la imagen (poppler/HEIC reales). |
+
+### Flujo típico (API)
+
+```bash
+export TOKEN=...  # el API_TOKEN del .env
+BASE=https://tu-host   # o http://localhost:8780 en local
+
+# 1. Subir un documento → 202 + job_id
+curl -s -H "Authorization: Bearer $TOKEN" -F "file=@factura.png" $BASE/v1/ocr
+
+# 2. Pollear hasta terminal
+curl -s -H "Authorization: Bearer $TOKEN" $BASE/v1/jobs/EL_JOB_ID
+
+# 3. Extracción estructurada (JSON validado contra un esquema)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  -F "file=@factura.png" -F "mode=structured" \
+  -F 'schema={"type":"object","properties":{"total":{"type":["string","null"]}},"required":["total"]}' \
+  $BASE/v1/ocr
+```
+
+### Panel admin
+
+La app sirve un panel web en `/` (uploader con drag/paste, selector de modelo, OCR en vivo). Es una superficie **solo local/tailnet** — nunca se expone por el ingress público (ver Deploy).
+
+## Arquitectura del proyecto
+
+```
+ocr-router/
+├── server.js                  # boot, guards fail-closed, panel /api, monta /v1
+├── lib/
+│   ├── ocr.js                 # seam runOCR(model, ...) → provider
+│   ├── models.js              # catálogo de motores (id, modelTag, modos)
+│   ├── clock.js               # reloj monotónico (deadlines/duraciones)
+│   ├── providers/             # ocrspace.js, ollama.js
+│   └── v1/
+│       ├── router.js          # rutas /v1, gates (auth, formato, esquema)
+│       ├── worker.js          # dispatch: forzado / cascada / input / structured
+│       ├── jobs.js            # store LRU de jobs + envelope
+│       ├── cascade/           # runner, config (perfiles/capacidades), heurística, trace
+│       ├── input/             # sniff, pdf-text, rasterize, image-normalize, page-pipeline, sandbox
+│       └── structured/        # schema (ajv), prompt, extract, capability, input-support
+├── public/index.html          # panel admin
+├── Dockerfile                 # node:22-bookworm-slim + poppler + tini, USER node
+├── docker-compose.yml         # modo vps (Caddy HTTPS público + Tailscale)
+├── docker-compose.tunnel.yml  # modo tunnel (home/WSL + Cloudflare Tunnel)
+├── Caddyfile / Caddyfile.tunnel
+├── install.sh / DEPLOY.md
+└── test/                      # node --test (suites de host) + docker-smoke
+```
+
+Flujo de un request:
+
+```
+multipart → router (auth + sniff magic-byte + gates) → cola (bottleneck, conc. 1)
+  → worker → { forzado | cascada | input-pipeline (PDF/multi-formato) | structured }
+  → envelope (pages[] / structured) → GET /v1/jobs/:id
+```
+
+La cascada es **declarativa** (`lib/v1/cascade/config.js`: perfiles `fast`/`balanced`/`quality` + tabla de capacidades) — sin `if`/`switch` por motor. `mode=structured` es una ruta aparte que reutiliza el seam del proveedor pero valida contra el esquema (ajv), con un reintento de reparación y fall-through; nunca devuelve JSON sin validar.
+
+## API / Endpoints
+
+Todas las rutas `/v1/*` (excepto `/v1/health`) requieren `Authorization: Bearer <API_TOKEN>`.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/v1/ocr` | Sube un archivo (multipart, campo `file`) → `202 { job_id, status_url }`. |
+| GET | `/v1/jobs/:id` | Pollea el job → terminal `succeeded` / `failed` + `result`. |
+| GET | `/v1/models` | Lista los motores configurados, sus `modes_supported` y `supports_structured`. |
+| GET | `/v1/health` | Liveness sin auth. |
+
+### POST `/v1/ocr` — campos (multipart)
+
+| Campo | Descripción |
+|-------|-------------|
+| `file` | El documento. Tipo detectado por magic-byte (nunca el `Content-Type` del cliente). |
+| `model` | *(opcional)* fuerza un motor específico (bypass de la cascada). |
+| `profile` | *(opcional)* `fast` / `balanced` / `quality`. |
+| `mode` | *(opcional)* `structured` para extracción JSON validada. |
+| `schema` | *(con `mode=structured`)* JSON Schema (`type: object`) al que ajustar la salida. |
+
+Formatos admitidos: **PNG, JPEG, WebP, PDF (nativo y escaneado), TIFF, HEIC, BMP, GIF**. Un upload sin `Content-Type` preciso (`application/octet-stream`) también se acepta y se decide por sniff. Respuestas: sobre-tamaño ⇒ `413`; formato desconocido/spoofeado ⇒ `422`; cola llena ⇒ `503 server_busy` + `Retry-After`; sin token / token inválido ⇒ `401`.
+
+`mode=structured` es single-image en esta versión (PNG/JPEG/WebP directo; HEIC/BMP normalizados). Forzar `ocrspace-engine2` con `mode=structured` ⇒ `422` (excluido por capacidad). Un PDF con `mode=structured` ⇒ `422`.
+
+## Docker
+
+Imagen `node:22-bookworm-slim` con `tini` (PID 1) y `poppler-utils` (rasterización de PDF escaneado). El healthcheck vive en el compose y usa un probe `fetch` nativo de Node (bookworm-slim no trae `wget`/`curl`). `stop_grace_period` de 40s le da al drain de SIGTERM (35s) margen para terminar jobs en vuelo antes del SIGKILL.
+
+El stack tiene tres piezas sobre la red `ocr_net`: **app** (API + worker), **caddy** (reverse proxy **default-deny**: solo `/v1/*` sale, el resto `404`) y, en modo tunnel, **cloudflared** (túnel saliente).
+
+```bash
+# Modo tunnel (home/WSL)
+docker compose -f docker-compose.tunnel.yml up -d --build
+# Modo vps (servidor público)
+docker compose up -d --build
+# Logs / estado / parar
+docker compose -f <compose> logs -f
+docker compose -f <compose> down
+```
+
+Las variables se leen de `.env` (ver Configuración).
+
+## Deploy
+
+Dos modos (detalle completo en [DEPLOY.md](DEPLOY.md)):
+
+- **tunnel** (home/WSL, sin IP pública): `docker-compose.tunnel.yml` + `Caddyfile.tunnel`. Un Cloudflare Tunnel entra a `caddy:80`; Cloudflare termina el TLS en el borde. El panel admin queda solo en `127.0.0.1:8780`.
+- **vps** (servidor): `docker-compose.yml` + `Caddyfile`. Caddy emite HTTPS Let's Encrypt para `$DOMAIN` en 80/443; el panel admin se ata a `${TAILSCALE_IP}:8780` (solo tu tailnet).
+
+**Perímetro de seguridad (ambos modos):** solo `/v1/*` es público (vía Caddy default-deny). El panel admin y `/api/*` usan las claves de proveedor **sin bearer** y nunca se exponen por el ingress. El `install.sh` documentado arriba automatiza todo el flujo y pregunta el modo al correr.
 
 ## Tests
 
-The test runner is `node --test` (no ESLint/TypeScript in this milestone).
+El runner es `node --test` (sin ESLint/TypeScript en este milestone).
 
 ```bash
-npm test   # all suites + scripts/verify-redaction.js
+npm test   # todas las suites + scripts/verify-redaction.js
 ```
 
-Deploy-artifact shape (this file, the Dockerfile, compose, Caddyfile) is covered
-by `test/deploy.test.js`. The build itself is validated by `docker compose build`.
+### Smoke de integración Docker (poppler + HEIC reales)
 
-### Docker integration smoke (D-11 — real poppler + HEIC)
-
-Two input-pipeline behaviors depend on the deployed base image and **cannot** be
-proven on the host: the subprocess sandbox (dash `ulimit -v`/`-t` + coreutils
-`timeout` around real `pdftoppm`/`pdfinfo`) and HEIC decode. `poppler-utils` is
-Docker-only by design, so `test/docker-smoke.test.js` is a **recorded Docker/human
-smoke, not a host-suite gate** — it is deliberately **excluded from `npm test`**.
-
-On the host (no `pdftoppm`) every real-dependency case **SKIPS** (green-by-skip);
-inside the image every case **executes** against the real binaries:
+Dos comportamientos del input-pipeline dependen de la imagen desplegada y **no** se pueden probar en el host: el sandbox de subproceso (dash `ulimit`/`timeout` alrededor de `pdftoppm`/`pdfinfo` reales) y el decode de HEIC. `poppler-utils` es Docker-only por diseño, así que `test/docker-smoke.test.js` es un smoke Docker **excluido de `npm test`**:
 
 ```bash
-# Build the image, then run the smoke inside it:
-bash scripts/docker-smoke.sh            # uses/builds ocr-router:latest
-REBUILD=1 bash scripts/docker-smoke.sh  # force a fresh image build first
+bash scripts/docker-smoke.sh            # usa/construye ocr-router:latest
+REBUILD=1 bash scripts/docker-smoke.sh  # fuerza rebuild
 ```
 
-The script bind-mounts only `test/` into `/app/test` (read-only) so Node resolves
-`lib/` and `node_modules` to the **image** build; the production image's copy set
-(which never ships `test/`) is untouched. What the smoke validates:
+En el host cada caso con dependencia real **SKIPea** (verde por skip); dentro de la imagen cada caso **ejecuta** contra los binarios reales (rasterización page-by-page, límite `ulimit -v` de 768 MB, decode HEIC→PNG, kill dentro de la ventana de gracia, drenaje de temp dirs).
 
-| Risk-flag | Proven |
-| --------- | ------ |
-| **A6** | dash `ulimit` + coreutils `timeout` exist and wrap the child in the base image |
-| **INP-04** | a scanned (image-only) PDF rasterizes page-by-page through real `pdfinfo` + `pdftoppm` to a valid PNG |
-| **A1 / T-03-19** | the shipped `ulimit -v` (`ULIMIT_V_KB`, 768 MB) allows a legit page while a tiny `-v` rejects the same render — the memory guard actually bites |
-| **A5 / T-03-20** | a real HEIC decodes through `heic-convert` (WASM) → `sharp` to a normalized PNG in the runtime image |
-| **Pitfall 4 / A2** | a runaway child bound to an `AbortSignal` is killed within the grace window; `timeout(1)` is the wall-clock backstop |
-| **Pitfall 2** | a simulated mid-job SIGTERM (shutdown drain) leaves no temp dir on disk |
+## Seguridad de dependencias
 
-## Dependency security (OPS-06)
-
-Production dependencies are scanned with `npm audit` so a future vulnerable pin
-is caught before ship:
+Las dependencias de producción se escanean con `npm audit`:
 
 ```bash
-npm run audit   # npm audit --omit=dev --audit-level=high  → exits non-zero on any high+ advisory
+npm run audit   # npm audit --omit=dev --audit-level=high  → falla en high/critical
 ```
 
-- **Scope:** `--omit=dev` audits only what ships to production; `--audit-level=high`
-  fails the gate on `high`/`critical` advisories (moderate/low are surfaced but
-  non-blocking for this milestone).
-- **Native/WASM decoder pins:** `sharp>=0.35.0` is the CVE-fixed floor (older
-  libvips-linked builds carried advisories); `unpdf`, `heic-convert`, and
-  `@vingle/bmp-js` are pinned to the researched versions in `CLAUDE.md`.
-- **Remediation:** the pre-existing transitive advisories (axios / form-data /
-  body-parser / qs, reachable via express + multer + axios) were remediated with
-  `npm audit fix` — no Express-5 major bump (the ported v4 middleware is kept per
-  `CLAUDE.md`). The gate currently reports **0 vulnerabilities**, so there is **no
-  allowlist**. If a future advisory is genuinely unfixable, add a documented,
-  time-boxed allowlist entry here (advisory ID + rationale + review date) rather
-  than lowering the gate threshold.
+`--omit=dev` audita solo lo que va a producción. `sharp>=0.35.0` es el piso con CVE corregido; `unpdf`, `heic-convert`, `@vingle/bmp-js` y `ajv` están pinneados a las versiones investigadas en `CLAUDE.md`. El gate reporta **0 vulnerabilidades** (sin allowlist). Si un futuro advisory fuera realmente irreparable, agregar una entrada de allowlist documentada y con fecha de revisión, en vez de bajar el umbral.
+
+## Estado del proyecto
+
+**Milestone v1.0 — completo (4 de 4 fases).** Foundation (API + auth + deploy), Cascade Router (escalonamiento automático + trazabilidad), Input Pipeline (PDF nativo/escaneado + normalización multi-formato + resultados por página) y Structured Extraction (`mode=structured`). Validado con suite automatizada verde y UAT en vivo end-to-end (OCR real por ocr.space y extracción estructurada real por Ollama visión). Último avance: 2026-07-24.
