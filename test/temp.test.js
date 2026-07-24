@@ -1,3 +1,7 @@
+// Private temp root for THIS test process — node --test runs files in
+// parallel and temp.js's orphan sweep is global to os.tmpdir(). Must come
+// before anything that creates or sweeps a temp dir. See the helper.
+require('./helpers/isolated-tmp');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
