@@ -167,9 +167,15 @@ test('API-03: GET /v1/models with token → 200 + {models:[{id,name,provider,mod
     assert.ok(m.provider, 'model.provider required');
     assert.ok(Array.isArray(m.modes_supported), 'model.modes_supported required');
     assert.ok(m.default_mode, 'model.default_mode required');
+    // STR-01 — structured capability is discoverable per engine.
+    assert.equal(typeof m.supports_structured, 'boolean', 'model.supports_structured required (STR-01)');
     // Catalog also has `label` and `modelTag` — the projection MUST NOT leak modelTag
     assert.equal(m.modelTag, undefined, 'projection must not include modelTag');
   }
+  // ocr.space is NOT structured-capable; the Ollama vision engines are.
+  const byId = Object.fromEntries(body.models.map((m) => [m.id, m]));
+  assert.equal(byId['ocrspace-engine2'].supports_structured, false);
+  assert.equal(byId['ollama-qwen3-vl-235b'].supports_structured, true);
 });
 
 // ---------------------------------------------------------------------------
