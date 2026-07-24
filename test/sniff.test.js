@@ -109,9 +109,44 @@ test('sniffImage rejects ftyp box with isom brand (generic ISO base media)', () 
   assert.equal(sniffImage(isom), null);
 });
 
-test('sniffImage identifies BMP by BM signature (42 4D)', () => {
-  const bmp = Buffer.from([0x42, 0x4D, 0x36, 0x00, 0x00, 0x00, 0x00, 0x00]);
-  assert.equal(sniffImage(bmp), 'image/bmp');
+// Build a BMP file header + DIB header of the given size.
+function bmpHeader(dibSize, declaredFileSize = 0x36) {
+  const b = Buffer.alloc(18);
+  b.write('BM', 0, 'ascii');
+  b.writeUInt32LE(declaredFileSize, 2);
+  b.writeUInt32LE(0x36, 10); // pixel data offset
+  b.writeUInt32LE(dibSize, 14);
+  return b;
+}
+
+test('sniffImage identifies BMP by BM signature + a known DIB header size', () => {
+  assert.equal(sniffImage(bmpHeader(40)), 'image/bmp', 'BITMAPINFOHEADER');
+  assert.equal(sniffImage(bmpHeader(12)), 'image/bmp', 'BITMAPCOREHEADER');
+  assert.equal(sniffImage(bmpHeader(124)), 'image/bmp', 'BITMAPV5HEADER');
+});
+
+test('sniffImage: the real BMP fixture still sniffs as image/bmp', () => {
+  const fixture = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, 'fixtures', 'sample.bmp'),
+  );
+  assert.equal(sniffImage(fixture), 'image/bmp', 'the guard must not reject genuine BMPs');
+});
+
+// WR-09 — 'BM' alone was the weakest signature in the sniffer, and it fed the
+// one decoder that allocates from an unvalidated header (CR-03). Any text file
+// beginning "BM" reached it.
+test('sniffImage rejects a plain-text file that merely starts with "BM" (WR-09)', () => {
+  const text = Buffer.from('BMW service manual, revision 3 — do not distribute', 'ascii');
+  assert.equal(sniffImage(text), null, 'text starting with BM must not sniff as BMP');
+});
+
+test('sniffImage rejects "BM" with an unknown DIB header size', () => {
+  assert.equal(sniffImage(bmpHeader(41)), null, '41 is not a defined DIB header size');
+  assert.equal(sniffImage(bmpHeader(0)), null, 'a zero DIB header size is not a bitmap');
+});
+
+test('sniffImage rejects a truncated BMP header (< 18 bytes)', () => {
+  assert.equal(sniffImage(Buffer.from([0x42, 0x4D, 0x36, 0x00])), null);
 });
 
 test('sniffImage identifies GIF87a', () => {
