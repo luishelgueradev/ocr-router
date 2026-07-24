@@ -63,17 +63,21 @@ const FIX = path.join(__dirname, 'fixtures');
 const TIFF = fs.readFileSync(path.join(FIX, 'multi-frame.tif')); // 3 frames
 const NATIVE_PDF = fs.readFileSync(path.join(FIX, 'native-sample.pdf'));
 
+// spawnCapture argv layout (CR-07 — the shell body is a constant; the target
+// command and its args ride argv from index 6 on).
+const I_CMD = 6;
+
 // fake ChildProcess emitting "Pages: N" for pdfinfo, a fake PNG for pdftoppm.
 function makePdfSpawn({ pages }) {
   return (cmd, args) => {
-    const body = args[1];
+    const target = args[I_CMD];
     const cp = new EventEmitter();
     cp.stdout = new EventEmitter();
     cp.stderr = new EventEmitter();
     cp.kill = () => {};
     queueMicrotask(() => {
-      if (/pdfinfo/.test(body)) cp.stdout.emit('data', Buffer.from(`Pages: ${pages}\n`));
-      else if (/pdftoppm/.test(body)) cp.stdout.emit('data', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      if (target === 'pdfinfo') cp.stdout.emit('data', Buffer.from(`Pages: ${pages}\n`));
+      else if (target === 'pdftoppm') cp.stdout.emit('data', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
       cp.emit('close', 0, null);
     });
     return cp;

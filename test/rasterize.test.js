@@ -17,11 +17,21 @@ const { CAPS } = require('../lib/v1/input/caps');
 // renderPage builds the exact one-page, pixel-bounded pdftoppm argv the memory
 // model requires (-singlefile stdout, -r DPI, -scale-to ceiling, -f/-l page).
 
+// spawnCapture argv layout (CR-07 — nothing is interpolated into the body):
+//   [0]'-c' [1]<constant body> [2]'sh' [3]ulimitKB [4]ulimitCpuSec [5]wallSec
+//   [6]cmd  [7..]cmd args
+const I_ULIMIT_KB = 3, I_ULIMIT_CPU = 4, I_CMD = 6;
+const cmdlineOf = (args) => (args ? args.slice(I_CMD) : []);
+
 // A fake ChildProcess that emits the given stdout then closes 0. Records the
-// (cmd, args, opts) it was spawned with so tests can assert the sandbox body.
+// (cmd, args, opts) it was spawned with so tests can assert the sandbox argv.
 function makeFakeSpawn(stdout, sink) {
   return (cmd, args, opts) => {
-    if (sink) { sink.cmd = cmd; sink.args = args; sink.opts = opts; sink.body = args && args[1]; }
+    if (sink) {
+      sink.cmd = cmd; sink.args = args; sink.opts = opts;
+      sink.body = args && args[1];
+      sink.cmdline = cmdlineOf(args);
+    }
     const cp = new EventEmitter();
     cp.stdout = new EventEmitter();
     cp.stderr = new EventEmitter();
@@ -43,7 +53,8 @@ test('pdfPageCount: parses "Pages:   7" from stubbed pdfinfo stdout', async () =
   // Funnels through spawnCapture → /bin/sh -c '...'; the real pdfinfo call and
   // the input path ride the sandbox body.
   assert.equal(sink.cmd, '/bin/sh', 'spawns via the sandbox shell (spawnCapture)');
-  assert.match(sink.body, /exec timeout -s KILL \d+s pdfinfo \/tmp\/x\.pdf/, 'pdfinfo invoked in the sandbox');
+  assert.deepEqual(sink.cmdline, ['pdfinfo', '/tmp/x.pdf'], 'pdfinfo invoked in the sandbox');
+  assert.match(sink.body, /exec timeout -s KILL "\$@"/, 'wrapped by the timeout backstop');
 });
 
 test('pdfPageCount: throws pdfinfo_no_page_count when the field is absent', async () => {
@@ -83,19 +94,21 @@ test('renderPage: builds the exact one-page pixel-bounded pdftoppm argv and reso
   assert.ok(Buffer.isBuffer(out), 'resolves a Buffer');
   assert.deepEqual(out, fakePng, 'returns the captured PNG buffer');
 
-  const body = sink.body;
-  // Guard #2: explicit DPI (never poppler's silent 150 default — Pitfall 6).
-  assert.match(body, new RegExp(`pdftoppm -r ${CAPS.RASTER_DPI} `), 'explicit -r RASTER_DPI');
-  assert.match(body, /-png/, 'PNG output');
-  assert.match(body, /-f 3 -l 3/, 'first/last pin the single page');
-  assert.match(body, /-singlefile/, '-singlefile required for stdout streaming');
-  assert.match(body, new RegExp(`-scale-to ${CAPS.RASTER_MAX_DIM}`), '-scale-to long-side pixel ceiling');
   // pdftoppm streams to stdout when the output-root is OMITTED (a trailing '-'
   // is written as a file '-.png' by poppler 22.12.0 — see 03-07 Docker smoke).
-  assert.match(body, /\/tmp\/input\.pdf$/, 'ends with <pdfPath> and NO output-root (stdout streaming)');
-  // Sandbox caps ride the body (ulimit guards #3; wall-clock backstop).
-  assert.match(body, new RegExp(`ulimit -v ${CAPS.ULIMIT_V_KB}`), 'ulimit -v address-space cap');
-  assert.match(body, new RegExp(`ulimit -t ${CAPS.ULIMIT_CPU_SEC}`), 'ulimit -t CPU-sec cap');
+  // Guard #2: explicit DPI (never poppler's silent 150 default — Pitfall 6).
+  assert.deepEqual(sink.cmdline, [
+    'pdftoppm',
+    '-r', String(CAPS.RASTER_DPI),
+    '-png',
+    '-f', '3', '-l', '3',
+    '-singlefile',
+    '-scale-to', String(CAPS.RASTER_MAX_DIM),
+    '/tmp/input.pdf',
+  ], 'exact one-page pixel-bounded argv, NO output-root (stdout streaming)');
+  // Sandbox caps ride the argv as positional operands (guards #3; wall-clock backstop).
+  assert.equal(sink.args[I_ULIMIT_KB], String(CAPS.ULIMIT_V_KB), 'ulimit -v address-space cap');
+  assert.equal(sink.args[I_ULIMIT_CPU], String(CAPS.ULIMIT_CPU_SEC), 'ulimit -t CPU-sec cap');
 });
 
 test('renderPage: honors dpi/maxDim/page overrides in the argv', async () => {
@@ -103,9 +116,10 @@ test('renderPage: honors dpi/maxDim/page overrides in the argv', async () => {
   const spawnFn = makeFakeSpawn(Buffer.from([0x89, 0x50]), sink);
   await renderPage('/tmp/y.pdf', 5, { dpi: 300, maxDim: 4000, spawnFn });
 
-  assert.match(sink.body, /pdftoppm -r 300 /, 'override DPI applied');
-  assert.match(sink.body, /-scale-to 4000/, 'override maxDim applied');
-  assert.match(sink.body, /-f 5 -l 5/, 'override page applied');
+  assert.deepEqual(sink.cmdline, [
+    'pdftoppm', '-r', '300', '-png', '-f', '5', '-l', '5',
+    '-singlefile', '-scale-to', '4000', '/tmp/y.pdf',
+  ], 'dpi / maxDim / page overrides all applied');
 });
 
 test('renderPage: passes the job signal through to the sandbox spawn', async () => {

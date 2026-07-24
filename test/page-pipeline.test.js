@@ -19,21 +19,25 @@ const FIX = path.join(__dirname, 'fixtures');
 const NATIVE_PDF = fs.readFileSync(path.join(FIX, 'native-sample.pdf')); // 2 native-text pages
 const TIFF = fs.readFileSync(path.join(FIX, 'multi-frame.tif')); //       3 frames
 
-// A fake ChildProcess: emits pdfinfo's "Pages: N" for a pdfinfo body, or a fake
-// PNG for a pdftoppm body, then closes 0. Records every shell body it saw so a
+// spawnCapture argv layout (CR-07 — the shell body is a constant; the command
+// and its args ride argv from index 6 on).
+const I_CMD = 6;
+
+// A fake ChildProcess: emits pdfinfo's "Pages: N" for a pdfinfo call, or a fake
+// PNG for a pdftoppm call, then closes 0. Records every command it saw so a
 // test can assert that NO rasterization ran before a cap check.
-function makePdfSpawn({ pages, renderPng, bodies }) {
+function makePdfSpawn({ pages, renderPng, invoked }) {
   return (cmd, args) => {
-    const body = args[1];
-    if (bodies) bodies.push(body);
+    const target = args[I_CMD];
+    if (invoked) invoked.push(target);
     const cp = new EventEmitter();
     cp.stdout = new EventEmitter();
     cp.stderr = new EventEmitter();
     cp.kill = () => {};
     queueMicrotask(() => {
-      if (/pdfinfo/.test(body)) {
+      if (target === 'pdfinfo') {
         cp.stdout.emit('data', Buffer.from(`Producer: x\nPages: ${pages}\nEncrypted: no\n`));
-      } else if (/pdftoppm/.test(body)) {
+      } else if (target === 'pdftoppm') {
         cp.stdout.emit('data', renderPng || Buffer.from([0x89, 0x50, 0x4e, 0x47]));
       }
       cp.emit('close', 0, null);
@@ -90,8 +94,8 @@ test('mixed PDF: native pages skip OCR, a scanned page routes → mixed summary'
 
   // Report 3 pages though the fixture only has 2 text-bearing pages → page 3 has
   // no embedded text (sufficient()=false) → it must rasterize + route.
-  const bodies = [];
-  const spawnFn = makePdfSpawn({ pages: 3, renderPng: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d]), bodies });
+  const invoked = [];
+  const spawnFn = makePdfSpawn({ pages: 3, renderPng: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d]), invoked });
   const routePage = makeRoutePage(() => ({ text: 'ocr-text', engineId: 'ollama-x', provider: 'ollama', confidence: 0.85 }));
 
   const out = await runPipeline({
@@ -106,7 +110,7 @@ test('mixed PDF: native pages skip OCR, a scanned page routes → mixed summary'
   assert.equal(routePage.calls[0].mime, 'image/png', 'rasterized page routed as PNG');
   assert.equal(out.status_rollup, 'completed');
   assert.equal(out.engine, 'mixed', 'differing engines → mixed summary');
-  assert.ok(bodies.some((b) => /pdftoppm/.test(b)), 'the scanned page was rasterized');
+  assert.ok(invoked.includes('pdftoppm'), 'the scanned page was rasterized');
 });
 
 test('image path: multipage TIFF → one routed page per frame, order preserved', async (t) => {
@@ -157,8 +161,8 @@ test('over-cap page count rejects BEFORE any rasterization', async (t) => {
   const tempDir = mkTemp();
   t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
 
-  const bodies = [];
-  const spawnFn = makePdfSpawn({ pages: CAPS.MAX_PDF_PAGES + 1, bodies });
+  const invoked = [];
+  const spawnFn = makePdfSpawn({ pages: CAPS.MAX_PDF_PAGES + 1, invoked });
   const routePage = makeRoutePage(() => ({ text: 'x', engineId: 'e', provider: 'p', confidence: 1 }));
 
   await assert.rejects(
@@ -167,6 +171,6 @@ test('over-cap page count rejects BEFORE any rasterization', async (t) => {
     'an over-cap PDF is rejected typed',
   );
 
-  assert.ok(!bodies.some((b) => /pdftoppm/.test(b)), 'no page was rasterized before the cap gate');
+  assert.ok(!invoked.includes('pdftoppm'), 'no page was rasterized before the cap gate');
   assert.equal(routePage.calls.length, 0, 'no page was routed');
 });

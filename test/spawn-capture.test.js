@@ -45,10 +45,10 @@ test('spawnCapture: resolves captured stdout Buffer on exit 0', async () => {
   assert.match(out.toString(), /Pages:   7/);
 });
 
-// Behavior: the real invocation is wrapped as `/bin/sh -c '<body>'` where the
-// body contains the ulimit caps AND `exec timeout -s KILL <n>s <cmd> <args>`.
-// The `exec` is mandatory (Pitfall 4 — without it the signal hits the shell,
-// not poppler, orphaning the child).
+// Behavior: the real invocation is wrapped as `/bin/sh -c '<body>' sh <operands>`
+// where the body is a CONSTANT and every variable part rides the ARGV as a
+// positional parameter. The `exec` is mandatory (Pitfall 4 — without it the
+// signal hits the shell, not poppler, orphaning the child).
 test('spawnCapture: wraps in /bin/sh -c with ulimit + exec timeout backstop', async () => {
   let captured = null;
   const cp = makeFakeChild();
@@ -58,27 +58,63 @@ test('spawnCapture: wraps in /bin/sh -c with ulimit + exec timeout backstop', as
     return cp;
   };
 
-  await spawnCapture('pdftoppm', ['-r', '200', 'x.pdf', '-'], {
+  await spawnCapture('pdftoppm', ['-r', '200', 'x.pdf'], {
     spawnFn, ulimitKB: 786432, ulimitCpuSec: 20, wallMs: 30000,
   });
 
   assert.equal(captured.cmd, '/bin/sh');
   assert.equal(captured.args[0], '-c');
   const body = captured.args[1];
-  assert.match(body, /ulimit -v 786432/, 'address-space cap present (ulimit -v, NOT -m)');
-  assert.match(body, /ulimit -t 20/, 'CPU-seconds cap present');
-  assert.match(body, /exec timeout -s KILL 30s pdftoppm -r 200 x\.pdf -/, 'exec + timeout backstop present');
+  assert.match(body, /ulimit -v "\$1"/, 'address-space cap read from $1 (ulimit -v, NOT -m)');
+  assert.match(body, /ulimit -t "\$2"/, 'CPU-seconds cap read from $2');
+  assert.match(body, /exec timeout -s KILL "\$@"/, 'exec + timeout backstop present');
+  // The whole point of CR-07: the operands ride argv, so the body itself can
+  // contain NO caller-supplied text at all.
+  assert.ok(!/pdftoppm/.test(body), 'the command never appears in the shell body');
+  assert.ok(!/786432/.test(body), 'no limit is interpolated into the shell body');
+  assert.deepEqual(
+    captured.args.slice(2),
+    ['sh', '786432', '20', '30s', 'pdftoppm', '-r', '200', 'x.pdf'],
+    '$0 placeholder then ulimits, wall clock, cmd and args as separate operands',
+  );
   assert.equal(captured.opts.killSignal, 'SIGTERM');
   assert.deepEqual(captured.opts.stdio, ['ignore', 'pipe', 'pipe']);
 });
 
-// Behavior: wallMs is rounded UP to whole seconds for timeout(1).
-test('spawnCapture: rounds wallMs up to whole seconds for timeout', async () => {
-  let body = null;
+// CR-07 regression: an argument containing shell metacharacters (a TMPDIR with a
+// space, a `;` injection attempt) must survive as ONE literal argv operand and
+// must never appear in the shell body.
+test('spawnCapture: shell metacharacters in cmd/args cannot reach the shell body', async () => {
+  let captured = null;
   const cp = makeFakeChild();
-  const spawnFn = (cmd, args) => { body = args[1]; queueMicrotask(() => cp.emit('close', 0, null)); return cp; };
+  const spawnFn = (cmd, args, opts) => {
+    captured = { cmd, args, opts };
+    queueMicrotask(() => cp.emit('close', 0, null));
+    return cp;
+  };
+
+  const hostile = '/tmp/my dir; touch /tmp/pwned; #/input.pdf';
+  await spawnCapture('pdfinfo', [hostile], {
+    spawnFn, ulimitKB: 1000, ulimitCpuSec: 5, wallMs: 1000,
+  });
+
+  const body = captured.args[1];
+  assert.ok(!body.includes('pwned'), 'injected payload never lands in the shell body');
+  assert.ok(!body.includes(hostile), 'the path never lands in the shell body');
+  assert.equal(
+    captured.args[captured.args.length - 1], hostile,
+    'the hostile path survives intact as a single argv operand',
+  );
+});
+
+// Behavior: wallMs is rounded UP to whole seconds for timeout(1) and passed as
+// an argv operand (not interpolated).
+test('spawnCapture: rounds wallMs up to whole seconds for timeout', async () => {
+  let argv = null;
+  const cp = makeFakeChild();
+  const spawnFn = (cmd, args) => { argv = args; queueMicrotask(() => cp.emit('close', 0, null)); return cp; };
   await spawnCapture('pdfinfo', ['a'], { spawnFn, wallMs: 10500, ulimitKB: 1, ulimitCpuSec: 1 });
-  assert.match(body, /timeout -s KILL 11s/, 'ceil(10500/1000) = 11');
+  assert.ok(argv.includes('11s'), 'ceil(10500/1000) = 11, passed as an operand');
 });
 
 // Behavior: non-zero exit rejects with an error carrying code + stderr string,
