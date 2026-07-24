@@ -147,6 +147,63 @@ test('drainAndCancel: drains registered temp dirs on mid-job SIGTERM (Pitfall 2)
   assert.equal(j.error.code, 'shutdown_cancelled', 'existing shutdown_cancelled semantics unchanged');
 });
 
+// CR-04 — ORDERING. The old code drained temp dirs as the FIRST step of
+// drainAndCancel, which deleted the in-flight job's input.pdf out from under a
+// running pdftoppm at t=0 while the drain was still politely waiting 35 s for
+// that same job. The test above passes either way (it only checks the dir is
+// eventually gone), so the ordering needs its own assertion.
+test('drainAndCancel: temp dirs are drained AFTER the job drain, never before (CR-04)', async (t) => {
+  const { drainAndCancel } = freshShutdown();
+  const { store, fakeJobs } = buildFakeJobs();
+
+  const order = [];
+  const fakeLimiter = {
+    stop: async () => {
+      // Model an in-flight job that is still working while the limiter drains.
+      await new Promise((r) => setTimeout(r, 20));
+      order.push('jobs_drained');
+    },
+  };
+  const fakeTemp = {
+    drainAllTempDirs: async () => { order.push('temp_drained'); return 0; },
+  };
+
+  store.set('jorder', { job_id: 'jorder', status: 'queued' });
+
+  await drainAndCancel(5000, { jobs: fakeJobs, limiter: fakeLimiter, temp: fakeTemp });
+
+  assert.deepEqual(
+    order, ['jobs_drained', 'temp_drained'],
+    'in-flight work must finish before its temp dir is deleted',
+  );
+});
+
+// CR-04 (second half) — the leak the old ordering left open: a temp dir created
+// DURING the drain window (by the job bottleneck promoted into the executing
+// slot) was registered after the snapshot had already been taken, so it was
+// never drained. Draining after the job drain closes that window.
+test('drainAndCancel: a temp dir created during the drain window is still removed (CR-04)', async (t) => {
+  const { drainAndCancel } = freshShutdown();
+  const { store, fakeJobs } = buildFakeJobs();
+  t.after(() => temp.drainAllTempDirs());
+
+  let lateDir = null;
+  const fakeLimiter = {
+    stop: async () => {
+      // A job promoted into the executing slot registers its temp dir here —
+      // i.e. AFTER shutdown began.
+      lateDir = await temp.createJobTempDir();
+      fs.writeFileSync(require('node:path').join(lateDir, 'input.pdf'), 'x');
+    },
+  };
+
+  store.set('jlate', { job_id: 'jlate', status: 'queued' });
+  await drainAndCancel(5000, { jobs: fakeJobs, limiter: fakeLimiter });
+
+  assert.ok(lateDir, 'the late job registered a temp dir');
+  assert.ok(!fs.existsSync(lateDir), 'a dir created during the drain window must NOT leak');
+});
+
 // Test 5: iterateAll() yields live references in the real jobs module (I-02 acceptance)
 // WR-08 fix — teardown via t.after() so the inserted record does NOT leak into
 // subsequent tests that enumerate the real jobs store (TTL is 1h, so without
