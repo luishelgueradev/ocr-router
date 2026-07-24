@@ -141,6 +141,16 @@ const { MAX_QUEUE_DEPTH } = require('./lib/v1/worker');
 // actual cap and mislabel the "server ready" log (MR-03).
 const { JOB_MAX } = require('./lib/v1/jobs');
 
+// INP-08 / WR-10 — reclaim `ocr-job-*` dirs orphaned by a PREVIOUS process.
+// The in-process registry cannot survive a SIGKILL (OOM killer, `docker kill`,
+// host reboot, shutdown grace expiry), so without a boot sweep those dirs
+// accumulate until /tmp fills and every input job fails at mkdtemp. Best-effort
+// and fire-and-forget: a sweep failure must never block startup.
+const { sweepOrphanedTempDirs } = require('./lib/v1/input/temp');
+sweepOrphanedTempDirs()
+  .then((removed) => { if (removed > 0) logger.info({ removed }, 'temp_orphans_swept'); })
+  .catch((e) => logger.error({ message: e && e.message }, 'temp_orphan_sweep_error'));
+
 const httpServer = app.listen(PORT, () => {
   logger.info(
     { port: PORT, max_upload_bytes: MAX_UPLOAD_BYTES, max_queue_depth: MAX_QUEUE_DEPTH, job_store_max: JOB_MAX },
