@@ -8,7 +8,21 @@ const {
   assertPageCountWithinCap,
   renderPage,
   computeScaleTo,
+  MIN_PNG_BYTES,
 } = require('../lib/v1/input/rasterize');
+
+// A structurally COMPLETE fake PNG: magic + filler + the terminating IEND chunk.
+// renderPage validates its output (CR-01), so a stub render must look like a
+// real, untruncated image or it is correctly rejected.
+function fakePng(bytes = MIN_PNG_BYTES + 64) {
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(Math.max(0, bytes - 20), 0x5a),
+    Buffer.from([0, 0, 0, 0]),          // chunk length
+    Buffer.from('IEND', 'ascii'),
+    Buffer.from([0xae, 0x42, 0x60, 0x82]), // IEND CRC
+  ]);
+}
 const { CAPS } = require('../lib/v1/input/caps');
 
 // INP-04 / INP-07 / D-02 / D-03 / D-11 — memory-safe single-page rasterization.
@@ -101,13 +115,13 @@ test('assertPageCountWithinCap: at/under cap returns normally (no throw)', () =>
 
 test('renderPage: builds the exact one-page pixel-bounded pdftoppm argv and resolves the PNG buffer', async () => {
   const sink = {};
-  const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]); // PNG magic
-  const spawnFn = makeFakeSpawn(fakePng, sink);
+  const png = fakePng();
+  const spawnFn = makeFakeSpawn(png, sink);
 
   const out = await renderPage('/tmp/input.pdf', 3, { spawnFn });
 
   assert.ok(Buffer.isBuffer(out), 'resolves a Buffer');
-  assert.deepEqual(out, fakePng, 'returns the captured PNG buffer');
+  assert.deepEqual(out, png, 'returns the captured PNG buffer');
 
   // pdftoppm streams to stdout when the output-root is OMITTED (a trailing '-'
   // is written as a file '-.png' by poppler 22.12.0 — see 03-07 Docker smoke).
@@ -129,7 +143,7 @@ test('renderPage: builds the exact one-page pixel-bounded pdftoppm argv and reso
 
 test('renderPage: honors dpi/page overrides in the argv', async () => {
   const sink = {};
-  const spawnFn = makeFakeSpawn(Buffer.from([0x89, 0x50]), sink);
+  const spawnFn = makeFakeSpawn(fakePng(), sink);
   await renderPage('/tmp/y.pdf', 5, { dpi: 300, maxDim: 4000, spawnFn });
 
   assert.deepEqual(sink.cmdline, [
@@ -146,7 +160,7 @@ test('renderPage: honors dpi/page overrides in the argv', async () => {
 
 test('renderPage: -r and -scale-to are never passed together (they are mutually exclusive)', async () => {
   const sink = {};
-  const spawnFn = makeFakeSpawn(Buffer.from([0x89]), sink);
+  const spawnFn = makeFakeSpawn(fakePng(), sink);
 
   // Known geometry → -scale-to only.
   await renderPage('/tmp/a.pdf', 1, { longEdgePts: 841.89, spawnFn });
@@ -161,7 +175,7 @@ test('renderPage: -r and -scale-to are never passed together (they are mutually 
 
 test('renderPage: DPI is EFFECTIVE — an A4 page renders at its natural DPI size, not the cap', async () => {
   const sink = {};
-  const spawnFn = makeFakeSpawn(Buffer.from([0x89]), sink);
+  const spawnFn = makeFakeSpawn(fakePng(), sink);
   const A4_LONG_PTS = 841.89; // 11.69 in
 
   await renderPage('/tmp/a4.pdf', 1, { longEdgePts: A4_LONG_PTS, dpi: 200, maxDim: 5000, spawnFn });
@@ -177,7 +191,7 @@ test('renderPage: DPI is EFFECTIVE — an A4 page renders at its natural DPI siz
 
 test('renderPage: a hostile MediaBox is clamped to maxDim (the cap is a real ceiling)', async () => {
   const sink = {};
-  const spawnFn = makeFakeSpawn(Buffer.from([0x89]), sink);
+  const spawnFn = makeFakeSpawn(fakePng(), sink);
   // 200 inches on the long edge — 40000px at 200dpi if uncapped.
   await renderPage('/tmp/bomb.pdf', 1, { longEdgePts: 14400, dpi: 200, maxDim: 5000, spawnFn });
 
@@ -198,6 +212,64 @@ test('computeScaleTo: clamps down, never up, and reports null for unknown geomet
   for (const bad of [undefined, null, 0, -5, NaN, Infinity, 'x']) {
     assert.equal(computeScaleTo(bad, 200, 5000), null, `${String(bad)} → null`);
   }
+});
+
+// --- CR-01: a truncated render must NEVER be routed as a successful page -----
+// Under a tight `ulimit -v` poppler exits 0 after emitting a truncated PNG.
+// spawnCapture resolves on code 0, so before this guard that garbage was
+// base64'd, sent to a paid OCR provider, came back empty, and was recorded as a
+// page with an engine, no error, and status_rollup 'completed'.
+
+test('renderPage: rejects a truncated render that poppler exited 0 on (CR-01)', async () => {
+  // The ~90-byte truncated PNG observed in the 03-07 Docker smoke: correct
+  // magic (so a magic-only check would pass it) but no terminating IEND chunk.
+  const truncated = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(82, 0x11),
+  ]);
+
+  await assert.rejects(
+    () => renderPage('/tmp/x.pdf', 4, { spawnFn: makeFakeSpawn(truncated) }),
+    (err) => {
+      assert.equal(err.code, 'raster_output_truncated', 'typed, not a silent success');
+      assert.equal(err.status, 422);
+      assert.equal(err.page, 4, 'names the offending page');
+      assert.equal(err.bytes, 90, 'reports the byte count');
+      assert.ok(!Buffer.isBuffer(err.buffer), 'no captured buffer rides the error');
+      return true;
+    },
+  );
+});
+
+test('renderPage: rejects a render missing the terminating IEND chunk even when large', async () => {
+  // Big enough to clear the length floor, right magic — only the IEND is gone.
+  // This is why the IEND check is the definitive truncation test.
+  const noIend = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(4096, 0x5a),
+  ]);
+  await assert.rejects(
+    () => renderPage('/tmp/x.pdf', 1, { spawnFn: makeFakeSpawn(noIend) }),
+    /raster_output_truncated/,
+  );
+});
+
+test('renderPage: rejects empty output and non-PNG output', async () => {
+  await assert.rejects(
+    () => renderPage('/tmp/x.pdf', 1, { spawnFn: makeFakeSpawn(Buffer.alloc(0)) }),
+    /raster_output_truncated/,
+    'zero bytes is not a page',
+  );
+  // Right length + right terminator, WRONG magic (poppler emitted something else).
+  const notPng = Buffer.concat([
+    Buffer.alloc(2048, 0x41),
+    Buffer.from([0, 0, 0, 0]), Buffer.from('IEND', 'ascii'), Buffer.alloc(4),
+  ]);
+  await assert.rejects(
+    () => renderPage('/tmp/x.pdf', 1, { spawnFn: makeFakeSpawn(notPng) }),
+    /raster_output_truncated/,
+    'PNG magic is required',
+  );
 });
 
 test('pdfInfo: parses page count AND page geometry from one pdfinfo call', async () => {
@@ -222,7 +294,7 @@ test('pdfInfo: parses page count AND page geometry from one pdfinfo call', async
 test('renderPage: passes the job signal through to the sandbox spawn', async () => {
   const sink = {};
   const ac = new AbortController();
-  const spawnFn = makeFakeSpawn(Buffer.from([0x89]), sink);
+  const spawnFn = makeFakeSpawn(fakePng(), sink);
   await renderPage('/tmp/z.pdf', 1, { signal: ac.signal, spawnFn });
 
   assert.equal(sink.opts.signal, ac.signal, 'the AbortSignal reaches the child (deadline binding)');

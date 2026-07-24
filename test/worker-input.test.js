@@ -67,6 +67,15 @@ const NATIVE_PDF = fs.readFileSync(path.join(FIX, 'native-sample.pdf'));
 // command and its args ride argv from index 6 on).
 const I_CMD = 6;
 
+// A structurally complete fake PNG — renderPage validates its output (CR-01).
+function fakePng() {
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(1068, 0x5a),
+    Buffer.from([0, 0, 0, 0]), Buffer.from('IEND', 'ascii'), Buffer.from([0xae, 0x42, 0x60, 0x82]),
+  ]);
+}
+
 // fake ChildProcess emitting "Pages: N" for pdfinfo, a fake PNG for pdftoppm.
 function makePdfSpawn({ pages }) {
   return (cmd, args) => {
@@ -77,7 +86,7 @@ function makePdfSpawn({ pages }) {
     cp.kill = () => {};
     queueMicrotask(() => {
       if (target === 'pdfinfo') cp.stdout.emit('data', Buffer.from(`Pages: ${pages}\n`));
-      else if (target === 'pdftoppm') cp.stdout.emit('data', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      else if (target === 'pdftoppm') cp.stdout.emit('data', fakePng());
       cp.emit('close', 0, null);
     });
     return cp;

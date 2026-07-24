@@ -23,6 +23,19 @@ const TIFF = fs.readFileSync(path.join(FIX, 'multi-frame.tif')); //       3 fram
 // and its args ride argv from index 6 on).
 const I_CMD = 6;
 
+// A structurally COMPLETE fake PNG. renderPage validates its output (CR-01), so
+// a stub render must carry the magic AND the terminating IEND chunk and clear
+// the length floor — otherwise it is (correctly) rejected as truncated.
+function fakePng(bytes = 1088) {
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(Math.max(0, bytes - 20), 0x5a),
+    Buffer.from([0, 0, 0, 0]),
+    Buffer.from('IEND', 'ascii'),
+    Buffer.from([0xae, 0x42, 0x60, 0x82]),
+  ]);
+}
+
 // A fake ChildProcess: emits pdfinfo's "Pages: N" for a pdfinfo call, or a fake
 // PNG for a pdftoppm call, then closes 0. Records every command it saw so a
 // test can assert that NO rasterization ran before a cap check.
@@ -41,7 +54,7 @@ function makePdfSpawn({ pages, renderPng, invoked, argvs, pageSize = '595.276 x 
           `Producer: x\nPages: ${pages}\n${pageSize ? `Page size:      ${pageSize}\n` : ''}Encrypted: no\n`,
         ));
       } else if (target === 'pdftoppm') {
-        cp.stdout.emit('data', renderPng || Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+        cp.stdout.emit('data', renderPng || fakePng());
       }
       cp.emit('close', 0, null);
     });
@@ -98,7 +111,7 @@ test('mixed PDF: native pages skip OCR, a scanned page routes → mixed summary'
   // Report 3 pages though the fixture only has 2 text-bearing pages → page 3 has
   // no embedded text (sufficient()=false) → it must rasterize + route.
   const invoked = [];
-  const spawnFn = makePdfSpawn({ pages: 3, renderPng: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d]), invoked });
+  const spawnFn = makePdfSpawn({ pages: 3, renderPng: fakePng(), invoked });
   const routePage = makeRoutePage(() => ({ text: 'ocr-text', engineId: 'ollama-x', provider: 'ollama', confidence: 0.85 }));
 
   const out = await runPipeline({
@@ -136,6 +149,38 @@ test('scanned page renders at its natural DPI size from the pdfinfo geometry (no
   const scaleTo = Number(raster[raster.indexOf('-scale-to') + 1]);
   assert.equal(scaleTo, Math.round((841.89 / 72) * CAPS.RASTER_DPI), 'A4 renders at its natural RASTER_DPI size');
   assert.ok(scaleTo < CAPS.RASTER_MAX_DIM, 'the page is NOT upscaled to the RASTER_MAX_DIM ceiling');
+});
+
+// CR-01 — a truncated render must be recorded as a PER-PAGE ERROR, never routed
+// to a provider and reported as a successful (but empty) page.
+test('a truncated render is a per-page error, NOT a silent empty success', async (t) => {
+  const tempDir = mkTemp();
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  // poppler exits 0 having emitted ~90 bytes of a PNG it never finished.
+  const truncated = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(82, 0x11),
+  ]);
+  const spawnFn = makePdfSpawn({ pages: 3, renderPng: truncated });
+  const routePage = makeRoutePage(() => ({ text: '', engineId: 'e', provider: 'p', confidence: 0.5 }));
+
+  const out = await runPipeline({
+    buffer: NATIVE_PDF, sniffedType: 'application/pdf', tempDir, routePage, spawnFn,
+  });
+
+  assert.equal(routePage.calls.length, 0, 'garbage is NEVER sent to a paid provider');
+  assert.equal(out.pages.length, 3, 'the page is recorded, not dropped');
+  const bad = out.pages[2];
+  assert.ok(bad.error, 'the truncated page carries an error');
+  assert.equal(bad.error.code, 'raster_output_truncated', 'typed as a truncation');
+  assert.equal(bad.engine, null, 'no engine is claimed for a page that never rendered');
+  assert.equal(
+    out.status_rollup, 'completed_with_errors',
+    'the job must NOT report a clean "completed" rollup',
+  );
+  // The native pages still succeed — one bad page never fails the whole job.
+  assert.equal(out.pages[0].engine, 'pdf-native');
 });
 
 test('image path: multipage TIFF → one routed page per frame, order preserved', async (t) => {
