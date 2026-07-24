@@ -20,7 +20,7 @@ require.cache[ocrPath].exports.runOCR = async (model, base64, mime, key, opts) =
 };
 process.on('beforeExit', () => { require.cache[ocrPath].exports.runOCR = originalRunOCR; });
 
-const { runStructured } = require('../lib/v1/structured/extract');
+const { runStructured, parseModelJson } = require('../lib/v1/structured/extract');
 const { parseAndCompileSchema } = require('../lib/v1/structured/schema');
 const { findModel } = require('../lib/v1/engines');
 
@@ -40,6 +40,47 @@ function withOllamaKeys(t) {
     scripts = {}; callLog = [];
   });
 }
+
+// G-B (live UAT) — real vision models return their JSON inside a ```json fence
+// even with Ollama's format param; a raw JSON.parse failed every real request.
+test('parseModelJson: strips a ```json markdown fence (the live-model quirk)', () => {
+  const fenced = '```json\n{\n  "invoice_no": "001-4567",\n  "total": "89250 ARS"\n}\n```';
+  const r = parseModelJson(fenced);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.value, { invoice_no: '001-4567', total: '89250 ARS' });
+});
+
+test('parseModelJson: strips a bare ``` fence and plain JSON alike', () => {
+  assert.deepEqual(parseModelJson('```\n{"a":1}\n```'), { ok: true, value: { a: 1 } });
+  assert.deepEqual(parseModelJson('{"a":1}'), { ok: true, value: { a: 1 } });
+  assert.deepEqual(parseModelJson('  {"a":1}  '), { ok: true, value: { a: 1 } });
+});
+
+test('parseModelJson: salvages JSON with leading prose via the {…} slice', () => {
+  const r = parseModelJson('Claro, aquí está el JSON solicitado:\n{"invoice_no":"X-9"}');
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.value, { invoice_no: 'X-9' });
+});
+
+test('parseModelJson: genuine non-JSON / non-object is a clean failure, not a throw', () => {
+  assert.equal(parseModelJson('this is not json at all').ok, false);
+  assert.equal(parseModelJson('42').ok, false, 'a bare scalar is not a structured object');
+  assert.equal(parseModelJson('null').ok, false);
+  assert.equal(parseModelJson(undefined).ok, false);
+});
+
+test('fenced JSON from the model is accepted end-to-end (no wasted repair) — G-B regression', async (t) => {
+  withOllamaKeys(t);
+  const { validate } = parseAndCompileSchema(SCHEMA);
+  // The model returns a schema-valid object, but fenced — exactly the live case.
+  scripts['ollama-gemini-3-flash'] = [
+    { ok: true, timeMs: 5, text: '```json\n{"name":"Acme","total":42}\n```' },
+  ];
+
+  const out = await runStructured({ base64: 'x', mimeType: 'image/png', profile: 'balanced', validate });
+  assert.deepEqual(out.structured, { name: 'Acme', total: 42 }, 'fenced JSON parses and validates');
+  assert.equal(callLog.length, 1, 'no repair retry was needed — it parsed on the first try');
+});
 
 test('first-try valid: returns the validated object from the cheapest structured engine', async (t) => {
   withOllamaKeys(t);
