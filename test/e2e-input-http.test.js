@@ -194,9 +194,6 @@ test('E2E: multipart HEIC is decoded and routed even when the client mislabels i
   // throw (prebuilt libvips has no HEVC), so a green result here means the
   // sniffed type — not the client's claim — drove the routing.
   //
-  // NOTE the declared type must still be one multer allows: the fileFilter is a
-  // permissive allowlist on the client-declared mimetype that runs BEFORE any
-  // sniffing, so application/octet-stream is rejected 422 at the door.
   const job = await runOne(t, {
     buffer: fs.readFileSync(path.join(FIX, 'sample.heic')),
     filename: 'photo.heic',
@@ -208,6 +205,40 @@ test('E2E: multipart HEIC is decoded and routed even when the client mislabels i
   assert.equal(job.result.status_rollup, 'completed');
   assert.equal(ocrCalls.length, 1);
   assert.equal(ocrCalls[0].mime, 'image/png', 'HEIC reached the engine as normalized PNG');
+});
+
+test('E2E: an unlabeled (application/octet-stream) valid image is admitted and routed', async (t) => {
+  // The primary consumers are automation pipelines (n8n and similar) that
+  // routinely upload a valid document with no precise Content-Type; multer
+  // stamps such a part application/octet-stream. It must reach the sniff, which
+  // then routes it on its real bytes — not be refused at the fileFilter door.
+  const job = await runOne(t, {
+    buffer: fs.readFileSync(path.join(FIX, 'multi-frame.tif')),
+    filename: 'upload.bin',
+    contentType: 'application/octet-stream',
+  });
+
+  assert.equal(job.status, 'succeeded', `job failed: ${JSON.stringify(job.error)}`);
+  assert.equal(job.result.pages.length, 3, 'the sniff routed the real TIFF bytes, header notwithstanding');
+  assert.equal(job.result.status_rollup, 'completed');
+});
+
+test('E2E: an unlabeled upload whose bytes are NOT a document is still rejected by the sniff', async (t) => {
+  // Admitting octet-stream at the fileFilter must not weaken the authoritative
+  // content check: garbage bytes with no recognizable magic still 422 at submit,
+  // never reaching the queue.
+  const { server, url } = await listen();
+  t.after(() => new Promise((r) => server.close(r)));
+
+  const res = await submit(url, {
+    buffer: Buffer.from('this is plainly not an image or a pdf, just text'),
+    filename: 'notes.bin',
+    contentType: 'application/octet-stream',
+  });
+
+  assert.equal(res.status, 422, 'unknown bytes are refused even when the declared type is admitted');
+  assert.equal(res.body.error, 'invalid_parameter');
+  assert.equal(res.body.field, 'file');
 });
 
 test('E2E: multipart BMP is decoded and routed', async (t) => {

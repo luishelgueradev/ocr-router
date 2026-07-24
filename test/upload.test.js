@@ -87,15 +87,39 @@ for (const mime of ['application/pdf', 'image/tiff', 'image/heic', 'image/heif',
   });
 }
 
-test('VAL-02: fileFilter still rejects application/octet-stream (not an admitted type)', () => {
-  let cbErr;
-  upload.fileFilter({}, { mimetype: 'application/octet-stream' }, (err) => {
+// UNLABELED binary is now ADMITTED at this first gate (the sniff is
+// authoritative). Automation clients routinely upload a valid document with no
+// precise Content-Type, which multer stamps `application/octet-stream`; refusing
+// it here rejected valid uploads for a header the client never set. The sniff in
+// router.js still 422s anything whose real bytes are unknown — proven by the two
+// e2e cases in test/e2e-input-http.test.js (octet-stream + real TIFF → 202;
+// octet-stream + text → 422).
+test('VAL-02: fileFilter ADMITS application/octet-stream (unlabeled binary → sniff decides)', () => {
+  let cbErr = 'unset';
+  let acceptResult;
+  upload.fileFilter({}, { mimetype: 'application/octet-stream' }, (err, accept) => {
     cbErr = err;
+    acceptResult = accept;
   });
-  assert.ok(cbErr instanceof multer.MulterError, 'fileFilter must reject non-whitelist with MulterError');
+  assert.equal(cbErr, null, 'an unlabeled binary must not be refused at the declared-MIME gate');
+  assert.equal(acceptResult, true);
 });
 
-test('VAL-02: fileFilter rejects image/svg+xml (defense against SVG-with-script)', () => {
+test('VAL-02: fileFilter ADMITS an empty/absent mimetype (same unlabeled case)', () => {
+  let cbErr = 'unset';
+  let acceptResult;
+  upload.fileFilter({}, { mimetype: '' }, (err, accept) => {
+    cbErr = err;
+    acceptResult = accept;
+  });
+  assert.equal(cbErr, null, 'an absent Content-Type is the unlabeled case, not a rejection');
+  assert.equal(acceptResult, true);
+});
+
+test('VAL-02: fileFilter still rejects a POSITIVELY non-document declared type (image/svg+xml)', () => {
+  // Widening to octet-stream must not turn the gate into an allow-all: a type
+  // the client explicitly declares AND that is a known non-document (SVG, the
+  // SVG-with-script vector) is still refused before the sniff.
   let cbErr;
   upload.fileFilter({}, { mimetype: 'image/svg+xml' }, (err) => {
     cbErr = err;
@@ -103,10 +127,10 @@ test('VAL-02: fileFilter rejects image/svg+xml (defense against SVG-with-script)
   assert.ok(cbErr instanceof multer.MulterError, 'SVG must be rejected at declared-MIME gate');
 });
 
-test('VAL-02: fileFilter rejects empty mimetype', () => {
+test('VAL-02: fileFilter still rejects text/plain (a declared non-document is not admitted)', () => {
   let cbErr;
-  upload.fileFilter({}, { mimetype: '' }, (err) => {
+  upload.fileFilter({}, { mimetype: 'text/plain' }, (err) => {
     cbErr = err;
   });
-  assert.ok(cbErr instanceof multer.MulterError);
+  assert.ok(cbErr instanceof multer.MulterError, 'an explicitly-declared non-document type is still refused');
 });
