@@ -78,7 +78,7 @@ function flush() {
 
 function makeFakeModel() {
   return {
-    id: 'ollama-qwen3-vl-235b',
+    id: 'ollama-qwen35-397b',
     provider: 'ollama',
     modes_supported: ['quality'],
   };
@@ -145,7 +145,7 @@ test('OBSV-05: job failed line contains only status, errorCode, message (no raw 
 
   const jobId = 'worker-fail-auth-' + Date.now();
   const requestId = 'fail-trace-1';
-  jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
   t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
 
   await runJob(jobId, {
@@ -207,7 +207,7 @@ test('OBSV-05: ECONNREFUSED failure maps to errorCode=provider_unavailable and s
   t.after(() => { fakeRunOCRImpl = null; });
 
   const jobId = 'worker-fail-conn-' + Date.now();
-  jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
   t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
 
   await runJob(jobId, {
@@ -267,7 +267,7 @@ test('OBSV-05: job crashed line contains ONLY errorCode=internal_error (no throw
 
   const jobId = 'worker-crash-' + Date.now();
   const requestId = 'crash-trace';
-  jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
   t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
 
   await runJob(jobId, {
@@ -341,7 +341,7 @@ test('OBSV-05: result.text on a failure result never appears in the job failed l
   t.after(() => { fakeRunOCRImpl = null; });
 
   const jobId = 'worker-fail-leakcheck-' + Date.now();
-  jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
   t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
 
   await runJob(jobId, {

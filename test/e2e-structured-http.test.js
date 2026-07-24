@@ -99,7 +99,7 @@ function reset() { scripts = {}; ocrCalls = []; }
 test('E2E structured: PNG + schema → 202 → validated structured envelope', async (t) => {
   const { server, url } = await listen();
   t.after(() => new Promise((r) => server.close(r))); reset();
-  scripts['ollama-gemini-3-flash'] = [JSON.stringify({ invoice_no: 'A-100', total: 250 })];
+  scripts['ollama-minimax-m3'] = [JSON.stringify({ invoice_no: 'A-100', total: 250 })];
 
   const sub = await submit(url, {
     buffer: pngBuffer(),
@@ -111,7 +111,7 @@ test('E2E structured: PNG + schema → 202 → validated structured envelope', a
   assert.equal(job.status, 'succeeded', `job: ${JSON.stringify(job)}`);
   assert.deepEqual(job.result.structured, { invoice_no: 'A-100', total: 250 });
   assert.equal(job.result.mode, 'structured');
-  assert.equal(job.result.engine, 'ollama-gemini-3-flash', 'cheapest structured tier; ocr.space excluded');
+  assert.equal(job.result.engine, 'ollama-minimax-m3', 'cheapest structured tier; ocr.space excluded');
   assert.equal(job.result.provider, 'ollama');
   assert.ok(ocrCalls.every((c) => c.hasFormat), 'the constrained-decoding format was sent');
 });
@@ -124,7 +124,7 @@ test('E2E structured: a HEIC photo is normalized to one frame then structured-ex
 
   const { server, url } = await listen();
   t.after(() => new Promise((r) => server.close(r))); reset();
-  scripts['ollama-gemini-3-flash'] = [JSON.stringify({ invoice_no: 'HEIC-1', total: null })];
+  scripts['ollama-minimax-m3'] = [JSON.stringify({ invoice_no: 'HEIC-1', total: null })];
 
   const sub = await submit(url, {
     buffer: fs.readFileSync(heicPath),
@@ -142,7 +142,7 @@ test('E2E structured: a HEIC photo is normalized to one frame then structured-ex
 test('E2E structured: invalid-then-repaired resolves through the HTTP path', async (t) => {
   const { server, url } = await listen();
   t.after(() => new Promise((r) => server.close(r))); reset();
-  scripts['ollama-gemini-3-flash'] = [
+  scripts['ollama-minimax-m3'] = [
     JSON.stringify({ total: 5 }),                        // missing invoice_no → invalid
     JSON.stringify({ invoice_no: 'B-2', total: 5 }),     // repaired
   ];
@@ -205,7 +205,7 @@ test('E2E structured: when no output ever validates, the job FAILS typed (never 
   const { server, url } = await listen();
   t.after(() => new Promise((r) => server.close(r))); reset();
   // every structured engine returns an object missing the required field, twice.
-  for (const id of ['ollama-gemini-3-flash', 'ollama-gemma4-31b', 'ollama-qwen3-vl-235b']) {
+  for (const id of ['ollama-minimax-m3', 'ollama-gemma4-31b', 'ollama-qwen35-397b']) {
     scripts[id] = [JSON.stringify({ total: 1 }), JSON.stringify({ total: 2 })];
   }
   const sub = await submit(url, {

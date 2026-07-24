@@ -12,7 +12,7 @@ test('supportsStructured: ocr.space is NOT structured-capable', () => {
 });
 
 test('supportsStructured: the three Ollama vision engines ARE structured-capable', () => {
-  for (const id of ['ollama-gemini-3-flash', 'ollama-gemma4-31b', 'ollama-qwen3-vl-235b']) {
+  for (const id of ['ollama-minimax-m3', 'ollama-gemma4-31b', 'ollama-qwen35-397b']) {
     assert.equal(supportsStructured(id), true, `${id} must be structured-capable`);
   }
 });

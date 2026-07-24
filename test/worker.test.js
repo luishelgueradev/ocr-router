@@ -30,10 +30,10 @@ test('D-04: runJob success path produces the page-aware envelope (result.pages[0
   t.after(() => { fakeRunOCRImpl = null; });
 
   const jobId = 'worker-success-envelope-' + Date.now();
-  jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
   t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
 
-  const fakeModel = { id: 'ollama-qwen3-vl-235b', provider: 'ollama', modes_supported: ['quality'] };
+  const fakeModel = { id: 'ollama-qwen35-397b', provider: 'ollama', modes_supported: ['quality'] };
   await runJob(jobId, {
     model: fakeModel,
     buffer: Buffer.alloc(64, 0x41),
@@ -52,7 +52,7 @@ test('D-04: runJob success path produces the page-aware envelope (result.pages[0
   const page = done.result.pages[0];
   assert.equal(page.page, 1, 'pages[0].page must be 1');
   assert.equal(page.text, 'extracted page text', 'pages[0].text carries the OCR text');
-  assert.equal(page.engine, 'ollama-qwen3-vl-235b', 'pages[0].engine records the engine id');
+  assert.equal(page.engine, 'ollama-qwen35-397b', 'pages[0].engine records the engine id');
   // Phase 2 (D-11 forced bypass): driving runJob with an explicit model now
   // exercises the forced-bypass path, which COMPUTES a confidence for the
   // winning engine — the Phase-1 `null` assertion is intentionally updated.

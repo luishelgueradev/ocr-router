@@ -95,15 +95,15 @@ test('quota at tier-1 (ocr.space 429) escalates to the Ollama tier, not aborts t
   const restore = withKeys(); reset();
   t.after(() => { restore(); reset(); });
   scripts['ocrspace-engine2'] = quota429;        // tier-1 rate-limited (different account)
-  scripts['ollama-gemini-3-flash'] = okClean();  // next-provider tier succeeds
+  scripts['ollama-minimax-m3'] = okClean();  // next-provider tier succeeds
 
   const { result, trace } = await runCascade({ base64: 'x', mimeType: 'image/png', profile: 'balanced', deadlineSignal: deadline(), budgetMs: 60000 });
 
-  assert.ok(callLog.includes('ollama-gemini-3-flash'), 'must escalate to the Ollama tier after ocr.space quota');
-  assert.equal(trace.winning_engine, 'ollama-gemini-3-flash');
+  assert.ok(callLog.includes('ollama-minimax-m3'), 'must escalate to the Ollama tier after ocr.space quota');
+  assert.equal(trace.winning_engine, 'ollama-minimax-m3');
   assert.equal(trace.stopped_reason, 'passed');
   assert.equal(trace.low_confidence, false);
-  assert.equal(result.engineId, 'ollama-gemini-3-flash');
+  assert.equal(result.engineId, 'ollama-minimax-m3');
   const ocrspaceAttempt = trace.engines_attempted.find(a => a.engine === 'ocrspace-engine2');
   assert.equal(ocrspaceAttempt.outcome, 'failed', 'ocr.space recorded as a failed (quota) attempt');
 });
@@ -113,15 +113,15 @@ test('escalate-on-garbage: low-confidence ocr.space falls through to the passing
   const restore = withKeys(); reset();
   t.after(() => { restore(); reset(); });
   scripts['ocrspace-engine2'] = okGarbage;
-  scripts['ollama-gemini-3-flash'] = okClean();
+  scripts['ollama-minimax-m3'] = okClean();
 
   const { result, trace } = await runCascade({ base64: 'x', mimeType: 'image/png', profile: 'balanced', deadlineSignal: deadline(), budgetMs: 60000 });
 
   assert.equal(trace.engines_attempted[0].outcome, 'low_confidence', 'tier-1 recorded as low_confidence');
-  assert.equal(trace.winning_engine, 'ollama-gemini-3-flash', 'the LLM tier wins');
+  assert.equal(trace.winning_engine, 'ollama-minimax-m3', 'the LLM tier wins');
   assert.equal(trace.stopped_reason, 'passed');
   assert.equal(trace.low_confidence, false);
-  assert.equal(result.engineId, 'ollama-gemini-3-flash');
+  assert.equal(result.engineId, 'ollama-minimax-m3');
 });
 
 // CASC-02: a hard failure (ok:false OR ocrExitCode:3) ESCALATES.
@@ -129,13 +129,13 @@ test('escalate-on-failure: ok:false at tier-1 escalates (outcome failed)', async
   const restore = withKeys(); reset();
   t.after(() => { restore(); reset(); });
   scripts['ocrspace-engine2'] = hardFail;
-  scripts['ollama-gemini-3-flash'] = okClean();
+  scripts['ollama-minimax-m3'] = okClean();
 
   const { trace } = await runCascade({ base64: 'x', mimeType: 'image/png', profile: 'balanced', deadlineSignal: deadline(), budgetMs: 60000 });
 
   assert.equal(trace.engines_attempted[0].outcome, 'failed', 'hard failure recorded as failed');
   assert.equal(typeof trace.engines_attempted[0].error, 'string', 'error is a code string, never an object (OPS-05)');
-  assert.equal(trace.winning_engine, 'ollama-gemini-3-flash');
+  assert.equal(trace.winning_engine, 'ollama-minimax-m3');
   assert.equal(trace.stopped_reason, 'passed');
 });
 
@@ -143,12 +143,12 @@ test('escalate-on-failure: ocrExitCode:3 (all pages failed) is a hard failure de
   const restore = withKeys(); reset();
   t.after(() => { restore(); reset(); });
   scripts['ocrspace-engine2'] = exitCode3;
-  scripts['ollama-gemini-3-flash'] = okClean();
+  scripts['ollama-minimax-m3'] = okClean();
 
   const { trace } = await runCascade({ base64: 'x', mimeType: 'image/png', profile: 'balanced', deadlineSignal: deadline(), budgetMs: 60000 });
 
   assert.equal(trace.engines_attempted[0].outcome, 'failed', 'OCRExitCode 3 → failed');
-  assert.equal(trace.winning_engine, 'ollama-gemini-3-flash');
+  assert.equal(trace.winning_engine, 'ollama-minimax-m3');
 });
 
 // CASC-04: when nothing clears threshold, return BEST-SO-FAR marked low_confidence (never lose work).
@@ -156,7 +156,7 @@ test('all-fail-best: no tier passes ⇒ best-so-far returned with low_confidence
   const restore = withKeys(); reset();
   t.after(() => { restore(); reset(); });
   scripts['ocrspace-engine2'] = okWeak;            // conf 0.5 — the highest observed
-  scripts['ollama-gemini-3-flash'] = okEmpty;      // conf 0
+  scripts['ollama-minimax-m3'] = okEmpty;      // conf 0
   scripts['ollama-gemma4-31b'] = hardFail;         // failed
 
   const { result, trace } = await runCascade({ base64: 'x', mimeType: 'image/png', profile: 'balanced', deadlineSignal: deadline(), budgetMs: 60000 });
@@ -176,15 +176,15 @@ test('quota-short-circuit: ollama 429 skips remaining ollama tiers (uncalled) an
   const restore = withKeys(); reset();
   t.after(() => { restore(); reset(); });
   scripts['ocrspace-engine2'] = okWeak;            // conf 0.5 (best-so-far)
-  scripts['ollama-gemini-3-flash'] = quota429;     // 429 → short-circuit
+  scripts['ollama-minimax-m3'] = quota429;     // 429 → short-circuit
   scripts['ollama-gemma4-31b'] = okClean();         // MUST NOT be called
-  scripts['ollama-qwen3-vl-235b'] = okClean();      // MUST NOT be called
+  scripts['ollama-qwen35-397b'] = okClean();      // MUST NOT be called
 
   const { result, trace } = await runCascade({ base64: 'x', mimeType: 'image/png', profile: 'quality', deadlineSignal: deadline(), budgetMs: 120000 });
 
   assert.equal(trace.stopped_reason, 'provider_quota');
   assert.ok(!callLog.includes('ollama-gemma4-31b'), 'gemma NOT invoked after quota');
-  assert.ok(!callLog.includes('ollama-qwen3-vl-235b'), 'qwen NOT invoked after quota');
+  assert.ok(!callLog.includes('ollama-qwen35-397b'), 'qwen NOT invoked after quota');
   const skipped = trace.engines_attempted.filter(a => a.outcome === 'skipped');
   assert.ok(skipped.length >= 2, 'remaining ollama tiers recorded as skipped');
   assert.ok(skipped.every(a => a.reason === 'provider_quota'), 'skip reason is provider_quota');
@@ -213,13 +213,13 @@ test('budget-exhausted: a slow provider that would exceed budgetMs stops with bu
   const restore = withKeys(); reset();
   t.after(() => { restore(); reset(); });
   scripts['ocrspace-engine2'] = slow(300);         // consumes most of the tiny budget, returns low-conf
-  scripts['ollama-gemini-3-flash'] = okClean();     // must NOT be reached (budget gone)
+  scripts['ollama-minimax-m3'] = okClean();     // must NOT be reached (budget gone)
 
   const started = Date.now();
   const { trace } = await runCascade({ base64: 'x', mimeType: 'image/png', profile: 'balanced', deadlineSignal: deadline(), budgetMs: 700 });
   const elapsed = Date.now() - started;
 
   assert.equal(trace.stopped_reason, 'budget_exhausted');
-  assert.ok(!callLog.includes('ollama-gemini-3-flash'), 'no further tier called after budget exhausted');
+  assert.ok(!callLog.includes('ollama-minimax-m3'), 'no further tier called after budget exhausted');
   assert.ok(elapsed < 700 + 500, 'runner does not blow far past the budget');
 });

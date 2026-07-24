@@ -5,7 +5,7 @@ const jobs = require('../lib/v1/jobs');
 // Test 1: queued -> processing -> succeeded state machine (ASYNC-04; D-03/D-04)
 test('job state machine: queued -> processing -> succeeded', async () => {
   const jobId = 'test-job-succeed-' + Date.now();
-  const createResult = jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  const createResult = jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
   assert.equal(createResult.full, false, 'create should return full:false');
 
   const queued = jobs.get(jobId);
@@ -23,8 +23,8 @@ test('job state machine: queued -> processing -> succeeded', async () => {
   // D-04: page-aware envelope even for a single image (one-element pages[]).
   jobs.complete(jobId, {
     text: 'extracted text',
-    pages: [{ page: 1, text: 'extracted text', engine: 'ollama-qwen3-vl-235b', confidence: null }],
-    engine: 'ollama-qwen3-vl-235b',
+    pages: [{ page: 1, text: 'extracted text', engine: 'ollama-qwen35-397b', confidence: null }],
+    engine: 'ollama-qwen35-397b',
     provider: 'ollama',
     mode: 'quality',
     bytes_received: 1234,
@@ -37,10 +37,10 @@ test('job state machine: queued -> processing -> succeeded', async () => {
   assert.equal(succeeded.result.pages.length, 1, 'single image ⇒ one-element pages[]');
   assert.equal(succeeded.result.pages[0].page, 1, 'pages[0].page should be 1');
   assert.equal(succeeded.result.pages[0].text, 'extracted text', 'pages[0].text should match');
-  assert.equal(succeeded.result.pages[0].engine, 'ollama-qwen3-vl-235b', 'pages[0].engine should be set');
+  assert.equal(succeeded.result.pages[0].engine, 'ollama-qwen35-397b', 'pages[0].engine should be set');
   assert.equal(succeeded.result.pages[0].confidence, null, 'pages[0].confidence is null in Phase 1');
   // D-05 job-level trace stub retained alongside the envelope.
-  assert.equal(succeeded.result.engine, 'ollama-qwen3-vl-235b');
+  assert.equal(succeeded.result.engine, 'ollama-qwen35-397b');
   assert.equal(succeeded.result.provider, 'ollama');
   assert.equal(succeeded.result.mode, 'quality');
   assert.equal(succeeded.result.bytes_received, 1234);
@@ -49,7 +49,7 @@ test('job state machine: queued -> processing -> succeeded', async () => {
 // Test 2: job reaches failed terminal state (ASYNC-04)
 test('job state machine: queued -> processing -> failed terminal state', async () => {
   const jobId = 'test-job-fail-' + Date.now();
-  jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
 
   const queued = jobs.get(jobId);
   assert.equal(queued.status, 'queued');
@@ -89,7 +89,7 @@ test('create returns full:true when store is at capacity', async () => {
 // mimicking what worker would do on a provider_error result
 test('worker terminal-state guarantee: provider failure -> failed (simulated)', async () => {
   const jobId = 'test-job-worker-sim-' + Date.now();
-  jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
   jobs.setProcessing(jobId);
   assert.equal(jobs.get(jobId).status, 'processing');
 

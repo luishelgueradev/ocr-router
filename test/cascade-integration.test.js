@@ -147,7 +147,7 @@ test('(b) no-model garbage tier-1 escalates to the LLM tier (low_confidence firs
   const { server, url } = await listen(app);
   reset();
   scripts['ocrspace-engine2'] = okGarbage;
-  scripts['ollama-gemini-3-flash'] = okClean();
+  scripts['ollama-minimax-m3'] = okClean();
   t.after(() => { reset(); return new Promise(r => server.close(r)); });
 
   const post = await submit(url, { buffer: pngBuffer() });
@@ -156,9 +156,9 @@ test('(b) no-model garbage tier-1 escalates to the LLM tier (low_confidence firs
 
   assert.equal(rec.status, 'succeeded');
   assert.equal(rec.result.trace.engines_attempted[0].outcome, 'low_confidence', 'tier-1 recorded low_confidence');
-  assert.equal(rec.result.trace.winning_engine, 'ollama-gemini-3-flash', 'the LLM tier wins');
+  assert.equal(rec.result.trace.winning_engine, 'ollama-minimax-m3', 'the LLM tier wins');
   assert.equal(rec.result.trace.low_confidence, false);
-  assert.equal(rec.result.pages[0].engine, 'ollama-gemini-3-flash');
+  assert.equal(rec.result.pages[0].engine, 'ollama-minimax-m3');
 });
 
 // ===========================================================================
@@ -169,7 +169,7 @@ test('(c) all-fail cascade still succeeds with best-so-far + low_confidence:true
   const { server, url } = await listen(app);
   reset();
   scripts['ocrspace-engine2'] = okWeak;        // conf 0.5 (best-so-far)
-  scripts['ollama-gemini-3-flash'] = okEmpty;  // conf 0
+  scripts['ollama-minimax-m3'] = okEmpty;  // conf 0
   scripts['ollama-gemma4-31b'] = hardFail;     // failed
   t.after(() => { reset(); return new Promise(r => server.close(r)); });
 
@@ -193,7 +193,7 @@ test('(d) profile:fast selects the short chain (default is balanced)', async (t)
   const { server, url } = await listen(app);
   reset();
   scripts['ocrspace-engine2'] = okGarbage;         // escalate
-  scripts['ollama-gemini-3-flash'] = okClean();    // fast chain ends here
+  scripts['ollama-minimax-m3'] = okClean();    // fast chain ends here
   t.after(() => { reset(); return new Promise(r => server.close(r)); });
 
   const post = await submit(url, { buffer: pngBuffer(), profile: 'fast' });
@@ -202,10 +202,10 @@ test('(d) profile:fast selects the short chain (default is balanced)', async (t)
 
   assert.equal(rec.status, 'succeeded');
   assert.equal(rec.result.trace.profile, 'fast', 'the fast profile was selected');
-  assert.equal(rec.result.trace.winning_engine, 'ollama-gemini-3-flash');
+  assert.equal(rec.result.trace.winning_engine, 'ollama-minimax-m3');
   const engines = rec.result.trace.engines_attempted.map(a => a.engine);
   assert.ok(!engines.includes('ollama-gemma4-31b'), 'fast chain never reaches gemma');
-  assert.ok(!engines.includes('ollama-qwen3-vl-235b'), 'fast chain never reaches qwen');
+  assert.ok(!engines.includes('ollama-qwen35-397b'), 'fast chain never reaches qwen');
   assert.ok(!callLog.includes('ollama-gemma4-31b'), 'gemma was not invoked under fast');
 });
 
@@ -220,7 +220,7 @@ test('(e) forced model bypasses the cascade (single attempt, no escalation)', as
   // a forced engine must run exactly once (D-07). Provide a higher tier too to
   // prove it is never called.
   scripts['ocrspace-engine2'] = okWeak;            // conf 0.5 (< balanced 0.6)
-  scripts['ollama-gemini-3-flash'] = okClean();    // MUST NOT be called
+  scripts['ollama-minimax-m3'] = okClean();    // MUST NOT be called
   t.after(() => { reset(); return new Promise(r => server.close(r)); });
 
   const post = await submit(url, { buffer: pngBuffer(), model: 'ocrspace-engine2' });

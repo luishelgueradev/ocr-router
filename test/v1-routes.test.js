@@ -175,7 +175,7 @@ test('API-03: GET /v1/models with token → 200 + {models:[{id,name,provider,mod
   // ocr.space is NOT structured-capable; the Ollama vision engines are.
   const byId = Object.fromEntries(body.models.map((m) => [m.id, m]));
   assert.equal(byId['ocrspace-engine2'].supports_structured, false);
-  assert.equal(byId['ollama-qwen3-vl-235b'].supports_structured, true);
+  assert.equal(byId['ollama-qwen35-397b'].supports_structured, true);
 });
 
 // ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ test('API-05 + ASYNC-02: POST /v1/ocr → 202 + Location + Retry-After + UUIDv7 
   const { body, contentType } = buildMultipart({
     buffer: pngBuffer(),
     mimetype: 'image/png',
-    model: 'ollama-qwen3-vl-235b',
+    model: 'ollama-qwen35-397b',
     mode: 'quality',
   });
 
@@ -240,7 +240,7 @@ test('API-06: GET /v1/jobs/:id returns the job record immediately after 202', as
   const { body, contentType } = buildMultipart({
     buffer: pngBuffer(),
     mimetype: 'image/png',
-    model: 'ollama-qwen3-vl-235b',
+    model: 'ollama-qwen35-397b',
   });
   const post = await fetch(`${url}/v1/ocr`, {
     method: 'POST',
@@ -315,7 +315,7 @@ test('MODE-04: POST /v1/ocr with unsupported mode → 422 invalid_parameter fiel
   const { body, contentType } = buildMultipart({
     buffer: pngBuffer(),
     mimetype: 'image/png',
-    model: 'ollama-qwen3-vl-235b',
+    model: 'ollama-qwen35-397b',
     mode: 'ludicrous',
   });
   const res = await fetch(`${url}/v1/ocr`, {
@@ -371,7 +371,7 @@ test('VAL-01: oversize upload → 413 payload_too_large with limit_bytes', async
   const { body, contentType } = buildMultipart({
     buffer: oversize,
     mimetype: 'image/png',
-    model: 'ollama-qwen3-vl-235b',
+    model: 'ollama-qwen35-397b',
   });
   const res = await fetch(`${url}/v1/ocr`, {
     method: 'POST',
@@ -398,7 +398,7 @@ test('VAL-02: declared image/png but garbage bytes → 422 field=file (sniff gua
   const { body, contentType } = buildMultipart({
     buffer: fake,
     mimetype: 'image/png', // lies about being PNG
-    model: 'ollama-qwen3-vl-235b',
+    model: 'ollama-qwen35-397b',
   });
   const res = await fetch(`${url}/v1/ocr`, {
     method: 'POST',

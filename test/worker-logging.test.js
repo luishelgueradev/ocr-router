@@ -85,7 +85,7 @@ function flush() {
 
 function makeFakeModel() {
   return {
-    id: 'ollama-qwen3-vl-235b',
+    id: 'ollama-qwen35-397b',
     provider: 'ollama',
     modes_supported: ['quality'],
   };
@@ -104,7 +104,7 @@ test('OBSV-03: runJob emits job start + job complete with all required fields', 
 
   const jobId = 'worker-log-success-' + Date.now();
   const requestId = 'test-req-1';
-  jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
   t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
 
   const buffer = Buffer.alloc(123, 0x42);
@@ -136,7 +136,7 @@ test('OBSV-03: runJob emits job start + job complete with all required fields', 
   // ---- job start: required field set ----
   assert.equal(startLine.job_id, jobId, 'job start must carry job_id');
   assert.equal(startLine.request_id, requestId, 'job start must carry request_id');
-  assert.equal(startLine.model, 'ollama-qwen3-vl-235b', 'job start must carry model id');
+  assert.equal(startLine.model, 'ollama-qwen35-397b', 'job start must carry model id');
   assert.equal(startLine.provider, 'ollama', 'job start must carry provider');
   assert.equal(startLine.mode, 'quality', 'job start must carry mode');
   assert.equal(startLine.bytes_received, buffer.length, 'job start must carry bytes_received');
@@ -144,7 +144,7 @@ test('OBSV-03: runJob emits job start + job complete with all required fields', 
   // ---- job complete: required field set + latency_ms ----
   assert.equal(completeLine.job_id, jobId, 'job complete must carry job_id');
   assert.equal(completeLine.request_id, requestId, 'job complete must carry request_id');
-  assert.equal(completeLine.model, 'ollama-qwen3-vl-235b', 'job complete must carry model id');
+  assert.equal(completeLine.model, 'ollama-qwen35-397b', 'job complete must carry model id');
   assert.equal(completeLine.provider, 'ollama', 'job complete must carry provider');
   assert.equal(completeLine.mode, 'quality', 'job complete must carry mode');
   assert.equal(
@@ -172,7 +172,7 @@ test('OBSV-03: request_id propagates from runJob options to every job log line',
 
   const jobId = 'worker-log-correlate-' + Date.now();
   const requestId = 'correlate-trace-xyz';
-  jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
   t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
 
   await runJob(jobId, {
@@ -208,7 +208,7 @@ test('OBSV-03: exactly one job start and one job complete per successful runJob'
   t.after(() => { fakeRunOCRImpl = null; });
 
   const jobId = 'worker-log-count-' + Date.now();
-  jobs.create(jobId, { model_id: 'ollama-qwen3-vl-235b' });
+  jobs.create(jobId, { model_id: 'ollama-qwen35-397b' });
   t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
 
   await runJob(jobId, {

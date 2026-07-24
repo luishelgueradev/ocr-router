@@ -98,7 +98,7 @@ test('cascade budget survives a backward wall-clock step mid-run (the reproduced
   // which is below minSliceMs (500). A wall-clock-derived `remaining` would
   // have inflated to ~1500ms and let this tier run.
   let escalated = false;
-  scripts['ollama-gemini-3-flash'] = async () => { escalated = true; return okClean(); };
+  scripts['ollama-minimax-m3'] = async () => { escalated = true; return okClean(); };
 
   const { trace } = await runCascade({
     base64: 'x',
