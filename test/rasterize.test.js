@@ -95,6 +95,28 @@ test('pdfPageCount: throws pdfinfo_no_page_count when the field is absent', asyn
   );
 });
 
+// WR-05 — the LOWER bound. pdfinfo reports `Pages: 0` for some damaged or
+// encrypted files; unvalidated, the render loop simply never ran and the job
+// "completed" with an empty envelope the client could not distinguish from a
+// genuinely empty document.
+test('pdfInfo: a zero / bogus page count is a typed pdf_no_pages, not an empty success', async () => {
+  await assert.rejects(
+    () => pdfInfo('/tmp/x.pdf', { spawnFn: makeFakeSpawn('Pages:          0\n') }),
+    (err) => {
+      assert.equal(err.code, 'pdf_no_pages', 'typed rejection');
+      assert.equal(err.status, 422);
+      assert.equal(err.actual, 0, 'reports the offending count');
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () => pdfInfo('/tmp/x.pdf', { spawnFn: makeFakeSpawn('Pages: 000\nPage size: 1 x 1 pts\n') }),
+    /pdf_no_pages/,
+    'a padded zero is still zero',
+  );
+});
+
 test('assertPageCountWithinCap: over-cap throws a typed 413/422 error', () => {
   let thrown;
   try {
