@@ -135,6 +135,37 @@ test('spawnCapture: rounds wallMs up to whole seconds for timeout', async () => 
   assert.ok(argv.includes('11s'), 'ceil(10500/1000) = 11, passed as an operand');
 });
 
+// WR-01 — the sandbox FAILS CLOSED. A caller that omits (or garbles) a ulimit
+// previously produced `ulimit -v undefined`, which dash rejects and then — with
+// no `set -e` — ran the child completely UNSANDBOXED. Refusing to spawn is the
+// only safe behaviour; no child may ever run without an address-space + CPU cap.
+test('spawnCapture: refuses to spawn without both sandbox limits (fail closed)', async () => {
+  let spawned = 0;
+  const spawnFn = () => { spawned += 1; return makeFakeChild(); };
+
+  const cases = [
+    ['both missing', {}],
+    ['ulimitKB missing', { ulimitCpuSec: 20 }],
+    ['ulimitCpuSec missing', { ulimitKB: 786432 }],
+    ['ulimitKB not a number', { ulimitKB: 'x', ulimitCpuSec: 20 }],
+    ['ulimitCpuSec zero', { ulimitKB: 786432, ulimitCpuSec: 0 }],
+    ['ulimitKB negative', { ulimitKB: -1, ulimitCpuSec: 20 }],
+  ];
+
+  for (const [label, limits] of cases) {
+    await assert.rejects(
+      spawnCapture('pdftoppm', ['/x.pdf'], { spawnFn, ...limits }),
+      (err) => {
+        assert.equal(err.code, 'spawn_sandbox_limits_required', `${label}: typed refusal`);
+        return true;
+      },
+      `${label} must be refused`,
+    );
+  }
+
+  assert.equal(spawned, 0, 'NO child process may be created without a full sandbox');
+});
+
 // Behavior: non-zero exit rejects with an error carrying code + stderr string,
 // and NOTHING else — no captured buffer, no key/secret fields leaked onto the
 // rejection object.
@@ -149,7 +180,7 @@ test('spawnCapture: non-zero exit rejects with {code, stderr} and no buffer/key 
   };
 
   await assert.rejects(
-    spawnCapture('pdftoppm', [], { spawnFn }),
+    spawnCapture('pdftoppm', [], { spawnFn, ulimitKB: 1, ulimitCpuSec: 1 }),
     (err) => {
       assert.equal(err.code, 1, 'carries exit code');
       assert.match(err.stderr, /boom/, 'carries stderr string');
@@ -267,7 +298,7 @@ test('spawnCapture: SIGKILLs and rejects output_pixel_cap_exceeded past maxStdou
   };
 
   await assert.rejects(
-    spawnCapture('pdftoppm', [], { spawnFn, maxStdoutBytes: 50 }),
+    spawnCapture('pdftoppm', [], { spawnFn, maxStdoutBytes: 50, ulimitKB: 1, ulimitCpuSec: 1 }),
     (err) => { assert.match(err.message, /output_pixel_cap_exceeded/); return true; }
   );
   assert.ok(cp.killCalls.includes('SIGKILL'), 'runaway child must be SIGKILL\'d');

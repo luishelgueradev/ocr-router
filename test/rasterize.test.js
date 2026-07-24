@@ -57,6 +57,19 @@ test('pdfPageCount: parses "Pages:   7" from stubbed pdfinfo stdout', async () =
   assert.match(sink.body, /exec timeout -s KILL "\$@"/, 'wrapped by the timeout backstop');
 });
 
+// WR-01 — pdfinfo is the FIRST subprocess to touch an untrusted PDF (it IS the
+// pre-raster decompression-bomb gate), so it must carry the SAME sandbox as the
+// raster child. It previously passed no ulimits at all.
+test('pdfPageCount: pdfinfo runs under the full sandbox (ulimits + stdout ceiling)', async () => {
+  const sink = {};
+  const spawnFn = makeFakeSpawn('Pages: 1\n', sink);
+  await pdfPageCount('/tmp/x.pdf', { spawnFn });
+
+  assert.equal(sink.args[I_ULIMIT_KB], String(CAPS.ULIMIT_V_KB), 'pdfinfo gets ulimit -v');
+  assert.equal(sink.args[I_ULIMIT_CPU], String(CAPS.ULIMIT_CPU_SEC), 'pdfinfo gets ulimit -t');
+  assert.ok(CAPS.PDFINFO_MAX_STDOUT_BYTES > 0, 'a captured-output ceiling is configured');
+});
+
 test('pdfPageCount: throws pdfinfo_no_page_count when the field is absent', async () => {
   const spawnFn = makeFakeSpawn('Producer: x\nEncrypted: no\n');
   await assert.rejects(
