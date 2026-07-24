@@ -50,9 +50,9 @@ Requirements for the initial milestone. Each maps to a roadmap phase.
 
 ### Structured Extraction
 
-- [ ] **STR-01**: Client requests `mode=structured` with a schema and receives validated JSON extracted by a vision LLM (ocr.space is excluded by capability)
-- [ ] **STR-02**: LLM output is constrained to the schema and validated; invalid output triggers one bounded repair retry before failing with a typed error
-- [ ] **STR-03**: Document content is passed to the LLM as delimited data (not instructions), mitigating prompt injection
+- [x] **STR-01**: Client requests `mode=structured` with a schema and receives validated JSON extracted by a vision LLM (ocr.space is excluded by capability)
+- [x] **STR-02**: LLM output is constrained to the schema and validated; invalid output triggers one bounded repair retry before failing with a typed error
+- [x] **STR-03**: Document content is passed to the LLM as delimited data (not instructions), mitigating prompt injection
 
 ### Deploy & Operations
 
@@ -133,9 +133,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | INP-07 | Phase 3 | Complete |
 | INP-08 | Phase 3 | Complete |
 | OPS-06 | Phase 3 | Complete |
-| STR-01 | Phase 4 | Pending |
-| STR-02 | Phase 4 | Pending |
-| STR-03 | Phase 4 | Pending |
+| STR-01 | Phase 4 | Done |
+| STR-02 | Phase 4 | Done |
+| STR-03 | Phase 4 | Done |
 
 **Coverage:**
 - v1 requirements: 38 total (note: prior summary said 37 — recount of the enumerated REQ-IDs yields 38; corrected here)

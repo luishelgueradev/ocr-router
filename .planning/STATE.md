@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 3 verification gaps (G-1, G-2, HVR#1) closed by quick task 260724-64d, plus a monotonic-clock defect and a test temp-root race found while re-auditing
+status: milestone_complete
+stopped_at: Phase 4 (Structured Extraction) complete — all 4 phases done; milestone v1.0 feature-complete
 last_updated: "2026-07-24T05:00:00.000Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 14
-  completed_plans: 14
-  percent: 75
+  completed_phases: 4
+  total_plans: 15
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -21,17 +21,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-23)
 
 **Core value:** Never fail to return the best available text/data for a document — the cascade escalates quality automatically so one API call always yields the best result any configured engine could produce.
-**Current focus:** Phase 3 — Input Pipeline
+**Current focus:** Milestone v1.0 feature-complete (Phase 4 done)
 
 ## Current Position
 
-Phase: 3 (Input Pipeline) — REVIEWED + FIXED + RE-VERIFIED; verification gaps CLOSED
-Plan: 7 of 7
-Status: 7/7 plans done. Code review found 23 issues (7 Critical, 11 Warning, 5 Info); all 18 Critical+Warning fixed. Re-verification returned `gaps_found` (G-1, G-2 + 3 human-verification items); quick task **260724-64d** closed G-1, G-2 and Human-Verification #1, and fixed two further defects it surfaced — see the appendix in `03-VERIFICATION.md`.
+Phase: 4 (Structured Extraction) — COMPLETE + VERIFIED. All 4 phases done; milestone v1.0 feature-complete.
+Plan: 1 of 1 (04-01)
+Status: mode=structured ships — schema-validated JSON via a vision LLM (constrained decoding + ajv + one repair + fall-through), ocr.space excluded by capability, injection-safe delimited-data prompt, additive envelope. runCascade untouched. 3/3 success criteria + STR-01/02/03 verified goal-backward (`04-VERIFICATION.md`).
 
-Current evidence (re-run, not cited): host suite **364 passed / 0 failed / 2 skipped** (the poppler-gated PDF E2E cases), stable across 3 consecutive runs; in-container **E2E 8/8, 0 skipped** and **Docker smoke 8/8, 0 skipped** against a rebuilt image.
+Current evidence (re-run, not cited): host suite **406 passed / 0 failed / 2 skipped** (poppler-gated input-PDF e2e); in-container **structured 38/38** and **input e2e 10/10**, both 0 skipped, on a rebuilt image (ajv included); Docker build OK with the memory cgroup enforced; audit 0 vulns; `node --check` clean.
 
-Still open: Human-Verification #3 (caps cross-validation policy — operator convention vs boot check), the 5 Info findings in `03-REVIEW.md`, and one new deferred item in `PENDING-ISSUES.md` (uploads declared `application/octet-stream` are rejected before sniffing).
+Also this session: fixed the octet-stream upload gate (unlabeled binary now reaches the sniff), and closed the Phase-3 gaps (G-1, G-2), the monotonic-clock defect, and the test temp-root race (quick task 260724-64d).
+
+Still open (deferred, non-blocking): Human-Verification #3 (Phase 3 caps cross-validation policy); the 5 Info findings in `03-REVIEW.md`; and the Phase-4 follow-ups in `PENDING-ISSUES.md` (ReDoS-via-pattern hardening, multi-page structured, admin-panel structured UI).
 Last activity: 2026-07-24
 
 Progress: [██████████] 100%

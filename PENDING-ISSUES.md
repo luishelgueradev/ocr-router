@@ -48,6 +48,24 @@ Format: `[PHASE] SEVERITY — title` · status · why deferred · where.
 - **Was:** `lib/v1/upload.js`'s multer `fileFilter` refused `application/octet-stream` (and an empty Content-Type) BEFORE `sniffImage`, so a valid document uploaded without a precise type — the common n8n binary-payload shape — got `422` even though its bytes were fine.
 - **Fix:** the fileFilter now admits the unlabeled-binary case; the authoritative sniff still 422s unknown bytes, and an explicitly-declared non-document type (SVG, text/plain) is still refused early. Covered by two e2e cases and two unit cases; all four fail against the previous filter.
 
+## Phase 4 — Structured Extraction
+
+### [P4] LOW — ReDoS surface via a client-supplied JSON Schema `pattern`
+- **Status:** deferred (hardening; bounded today). Surfaced 2026-07-24 (Phase 4).
+- **What:** `mode=structured` compiles a client JSON Schema with ajv (`lib/v1/structured/schema.js`). A malicious `pattern`/`patternProperties` regex is compiled to a `RegExp` and run against the model's output during validation. A catastrophic-backtracking pattern could burn CPU on the single-concurrency worker.
+- **Why bounded now:** validation runs against the LLM output, which is small (`num_predict`-capped), and the whole job is under `MAX_JOB_MS`. The schema itself is capped at 64 KiB / depth 12. So the blast radius is one job's deadline, not the process.
+- **Complete fix (future):** compile+validate inside a worker thread with a hard timeout, or strip/deny `pattern` keywords. Not done in the MVP.
+- **Where:** `lib/v1/structured/schema.js` (`parseAndCompileSchema`).
+
+### [P4] LOW — Structured extraction is single-image only
+- **Status:** deferred by design (D-S9). PDF and multi-frame TIFF/GIF with `mode=structured` are typed-rejected (422 field=file) before enqueue.
+- **Why:** Phase 4 depends on Phase 2, independent of Phase 3. Per-page structured extraction (one schema across N pages, or a page-array schema) is a distinct feature needing its own design.
+- **Where:** `lib/v1/structured/input-support.js`, `lib/v1/router.js` (the D-S9 gate).
+
+### [P4] LOW — Admin panel does not expose mode=structured
+- **Status:** deferred (API-only this milestone). The `public/` admin panel offers text OCR; structured mode is reachable via the API but not the UI.
+- **Where:** `public/` (see the UI review / UI-IMPROVEMENTS.md).
+
 ## Live-stack smoke checks (human, not automatable here)
 Recorded by the Phase 1 verifier as **informational** — require a real VPS/tailnet/providers, so they are not gaps in the automated suite:
 - Real ACME/HTTPS issuance + Tailscale admin binding on the VPS.

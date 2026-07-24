@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation** - Ported bearer-secured `/v1` async OCR API with page-aware envelope, image OCR, and Caddy/Tailscale deploy (completed 2026-07-23)
 - [x] **Phase 2: Cascade Router** - Automatic engine escalation with confidence heuristic, traceability, cost caps, and graceful degradation (completed 2026-07-23)
 - [x] **Phase 3: Input Pipeline** - Memory-safe PDF (native + scanned) and multi-format image normalization with per-page results (completed 2026-07-23)
-- [ ] **Phase 4: Structured Extraction** - Schema-driven, validated JSON extraction via vision LLM
+- [x] **Phase 4: Structured Extraction** - Schema-driven, validated JSON extraction via vision LLM (completed 2026-07-24)
 
 ## Phase Details
 
@@ -84,7 +84,7 @@ Plans:
   1. A client requests `mode=structured` with a schema and receives JSON validated against that schema, extracted by a vision LLM; ocr.space is excluded by capability, and forcing it with `mode=structured` is rejected with a typed error.
   2. LLM output is constrained to the schema (constrained decoding) and validated; invalid output triggers exactly one bounded repair retry before failing with a typed error, never returning unvalidated JSON.
   3. Document content is passed to the LLM as clearly delimited data (never as instructions), so a document cannot change the output shape (prompt-injection mitigation), and non-present fields come back `null` rather than fabricated.
-**Plans**: TBD
+**Plans**: 1/1 (04-01)
 
 ## Progress
 
@@ -96,4 +96,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | 3/3 | Complete   | 2026-07-23 |
 | 2. Cascade Router | 4/4 | Complete   | 2026-07-23 |
 | 3. Input Pipeline | 7/7 | Complete   | 2026-07-23 |
-| 4. Structured Extraction | 0/TBD | Not started | - |
+| 4. Structured Extraction | 1/1 | Complete   | 2026-07-24 |
