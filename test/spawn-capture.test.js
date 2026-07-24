@@ -11,7 +11,18 @@ const { spawnCapture } = require('../lib/v1/input/spawn-capture');
 
 // Fake ChildProcess: stdout/stderr are EventEmitters, kill() records the signals
 // it was asked to send so we can assert the SIGTERM→SIGKILL escalation.
-function makeFakeChild() {
+//
+// WR-08: when a `signal` is supplied this fake MODELS NODE'S REAL CONTRACT for
+// `child_process.spawn({ signal })` — Node registers its OWN abort listener at
+// spawn time (i.e. before spawnCapture registers anything), and on abort it
+// kills the child with `killSignal` and then SYNCHRONOUSLY emits 'error' with an
+// AbortError. The previous bare-EventEmitter fake never emitted 'error', so it
+// could not reach the production failure mode at all (CR-05).
+//
+// Pass the signal from INSIDE spawnFn so the listener-registration order matches
+// production. `ignoresSigterm: true` models a child that survives the SIGTERM —
+// the only case in which the SIGKILL escalation is supposed to fire.
+function makeFakeChild(signal, { ignoresSigterm = false } = {}) {
   const cp = new EventEmitter();
   cp.stdout = new EventEmitter();
   cp.stderr = new EventEmitter();
@@ -22,6 +33,13 @@ function makeFakeChild() {
     cp.killed = true;
     return true;
   };
+  if (signal) {
+    signal.addEventListener('abort', () => {
+      cp.kill('SIGTERM');
+      cp.emit('error', Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+      if (!ignoresSigterm) queueMicrotask(() => cp.emit('close', null, 'SIGTERM'));
+    }, { once: true });
+  }
   return cp;
 }
 
@@ -146,33 +164,60 @@ test('spawnCapture: non-zero exit rejects with {code, stderr} and no buffer/key 
   );
 });
 
-// Behavior: an 'error' event (this is where an AbortError lands) rejects with
-// that error AND clears the escalation timer so no stray SIGKILL fires later.
-test('spawnCapture: error event rejects with the error and clears escalation timer', async () => {
-  const cp = makeFakeChild();
+// Behavior (WR-08/CR-05, modelling Node's REAL seam): on abort Node kills the
+// child and synchronously emits 'error'. A COMPLIANT child dies from that
+// SIGTERM, so its 'close' must disarm the escalation — exactly one signal, no
+// stray SIGKILL.
+test('spawnCapture: abort rejects AbortError; a child that dies on SIGTERM is never SIGKILLed', async () => {
   const controller = new AbortController();
-  const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
-
-  const spawnFn = () => {
-    queueMicrotask(() => {
-      controller.abort();                       // arms the escalation timer
-      queueMicrotask(() => cp.emit('error', abortErr)); // then the child errors out
-    });
+  let cp;
+  const spawnFn = (c, a, opts) => {
+    cp = makeFakeChild(opts.signal);            // dies on SIGTERM
+    queueMicrotask(() => controller.abort());
     return cp;
   };
 
   await assert.rejects(
-    spawnCapture('pdftoppm', [], { spawnFn, signal: controller.signal, killGraceMs: 20 }),
+    spawnCapture('pdftoppm', [], {
+      spawnFn, signal: controller.signal, killGraceMs: 20, ulimitKB: 1, ulimitCpuSec: 1,
+    }),
     (err) => { assert.equal(err.name, 'AbortError'); return true; }
   );
 
-  // Past the grace window: the timer must have been cleared, so NO SIGKILL.
-  await new Promise((r) => setTimeout(r, 40));
-  assert.ok(!cp.killCalls.includes('SIGKILL'), 'escalation timer must be cleared on error');
+  // Past the grace window: the child already closed, so NO SIGKILL.
+  await new Promise((r) => setTimeout(r, 60));
+  assert.deepEqual(cp.killCalls, ['SIGTERM'], 'a compliant child is signalled exactly once');
 });
 
-// Behavior: on abort, if the child does not exit within killGraceMs the worker
-// escalates by calling child.kill('SIGKILL') itself (Node does NOT auto-escalate).
+// CR-05 REGRESSION — the phase's most safety-critical mechanism. Node's own
+// abort listener runs FIRST and emits 'error' synchronously, which settles the
+// promise and tears down our listeners inside the SAME dispatch. Before the fix
+// that removed `escalate` before it could run, so no SIGKILL was EVER sent in
+// production and a SIGTERM-ignoring poppler wedged the concurrency-1 worker for
+// the full wall-clock backstop. This test fails against that implementation.
+test('spawnCapture: escalates to SIGKILL when the child ignores the abort SIGTERM (CR-05)', async () => {
+  const controller = new AbortController();
+  let cp;
+  const spawnFn = (c, a, opts) => {
+    cp = makeFakeChild(opts.signal, { ignoresSigterm: true }); // survives SIGTERM
+    queueMicrotask(() => controller.abort());
+    return cp;
+  };
+
+  const p = spawnCapture('pdftoppm', [], {
+    spawnFn, signal: controller.signal, killGraceMs: 15, ulimitKB: 1, ulimitCpuSec: 1,
+  });
+
+  await assert.rejects(p, (err) => { assert.equal(err.name, 'AbortError'); return true; });
+
+  // The promise settling does NOT mean the child is gone — the escalation must
+  // outlive it and land the SIGKILL.
+  await new Promise((r) => setTimeout(r, 60));
+  assert.ok(cp.killCalls.includes('SIGKILL'), 'a SIGTERM-ignoring child MUST still be SIGKILLed');
+});
+
+// Behavior: the escalation also covers the case where the child neither errors
+// nor exits after the abort (no 'error' event at all).
 test('spawnCapture: escalates to SIGKILL when child ignores abort past killGraceMs', async () => {
   const cp = makeFakeChild();
   const controller = new AbortController();
@@ -181,12 +226,35 @@ test('spawnCapture: escalates to SIGKILL when child ignores abort past killGrace
     return cp;
   };
 
-  const p = spawnCapture('pdftoppm', [], { spawnFn, signal: controller.signal, killGraceMs: 15 });
+  const p = spawnCapture('pdftoppm', [], {
+    spawnFn, signal: controller.signal, killGraceMs: 15, ulimitKB: 1, ulimitCpuSec: 1,
+  });
   // Simulate the child finally dying from the SIGKILL after the grace window.
   setTimeout(() => cp.emit('close', null, 'SIGKILL'), 50);
 
   await assert.rejects(p);
   assert.ok(cp.killCalls.includes('SIGKILL'), 'must SIGKILL after the grace window');
+});
+
+// Behavior: a genuine spawn failure (ENOENT/EACCES — no abort) must NOT arm the
+// escalation; there is no child to kill.
+test('spawnCapture: a non-abort spawn error does not arm the SIGKILL escalation', async () => {
+  const cp = makeFakeChild();
+  const controller = new AbortController();
+  const spawnFn = () => {
+    queueMicrotask(() => cp.emit('error', Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' })));
+    return cp;
+  };
+
+  await assert.rejects(
+    spawnCapture('pdftoppm', [], {
+      spawnFn, signal: controller.signal, killGraceMs: 15, ulimitKB: 1, ulimitCpuSec: 1,
+    }),
+    /ENOENT/,
+  );
+
+  await new Promise((r) => setTimeout(r, 50));
+  assert.deepEqual(cp.killCalls, [], 'no signal is sent when the child never started');
 });
 
 // Behavior: when captured stdout exceeds maxStdoutBytes the child is SIGKILL'd
