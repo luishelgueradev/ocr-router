@@ -183,6 +183,34 @@ test('a truncated render is a per-page error, NOT a silent empty success', async
   assert.equal(out.pages[0].engine, 'pdf-native');
 });
 
+// WR-04 — an unpdf/PDF.js failure must DEGRADE to rasterizing every page, not
+// fail the job. pdfinfo already succeeded at this point, so poppler can read the
+// file; aborting would contradict the product's core value ("never fail to
+// return the best available text") for a purely optional fast path.
+test('a native-text extraction failure degrades to rasterizing every page (WR-04)', async (t) => {
+  const tempDir = mkTemp();
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  // A PDF whose header pdfinfo (stubbed) reads fine but whose body unpdf cannot
+  // parse — the shape of a password-protected or malformed-xref document.
+  const unreadable = Buffer.concat([Buffer.from('%PDF-1.4\n', 'ascii'), Buffer.alloc(256, 0x00)]);
+
+  const spawnFn = makePdfSpawn({ pages: 2 });
+  const routePage = makeRoutePage((b64, mime, n) => ({
+    text: `ocr${n}`, engineId: 'ollama-x', provider: 'ollama', confidence: 0.8,
+  }));
+
+  const out = await runPipeline({
+    buffer: unreadable, sniffedType: 'application/pdf', tempDir, routePage, spawnFn,
+  });
+
+  assert.equal(out.pages.length, 2, 'both pages are produced');
+  assert.equal(routePage.calls.length, 2, 'every page fell back to rasterize + route');
+  assert.equal(out.status_rollup, 'completed', 'the job still completes cleanly');
+  assert.equal(out.engine, 'ollama-x', 'OCR results, not a failed job');
+  assert.equal(out.text, 'ocr1\n\nocr2');
+});
+
 test('image path: multipage TIFF → one routed page per frame, order preserved', async (t) => {
   const tempDir = mkTemp();
   t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
