@@ -12,6 +12,8 @@ require('./helpers/isolated-tmp');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const express = require('express');
 
 // Stub runOCR BEFORE requiring the router (worker binds it at load).
@@ -112,6 +114,29 @@ test('E2E structured: PNG + schema → 202 → validated structured envelope', a
   assert.equal(job.result.engine, 'ollama-gemini-3-flash', 'cheapest structured tier; ocr.space excluded');
   assert.equal(job.result.provider, 'ollama');
   assert.ok(ocrCalls.every((c) => c.hasFormat), 'the constrained-decoding format was sent');
+});
+
+test('E2E structured: a HEIC photo is normalized to one frame then structured-extracted', async (t) => {
+  // Exercises the D-S9 'normalize' branch end to end: the worker runs the real
+  // heic-convert→sharp single-frame normalize before the (stubbed) vision call.
+  const heicPath = path.join(__dirname, 'fixtures', 'sample.heic');
+  if (!fs.existsSync(heicPath)) { t.skip('no HEIC fixture'); return; }
+
+  const { server, url } = await listen();
+  t.after(() => new Promise((r) => server.close(r))); reset();
+  scripts['ollama-gemini-3-flash'] = [JSON.stringify({ invoice_no: 'HEIC-1', total: null })];
+
+  const sub = await submit(url, {
+    buffer: fs.readFileSync(heicPath),
+    filename: 'photo.heic',
+    contentType: 'image/heic',
+    fields: { mode: 'structured', schema: JSON.stringify(SCHEMA) },
+  });
+  assert.equal(sub.status, 202, `submit body: ${JSON.stringify(sub.body)}`);
+  const job = await poll(url, sub.body.job_id);
+  assert.equal(job.status, 'succeeded', `job: ${JSON.stringify(job)}`);
+  assert.deepEqual(job.result.structured, { invoice_no: 'HEIC-1', total: null });
+  assert.equal(ocrCalls.length, 1, 'the normalized frame was routed once');
 });
 
 test('E2E structured: invalid-then-repaired resolves through the HTTP path', async (t) => {
