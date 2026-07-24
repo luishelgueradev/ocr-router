@@ -43,12 +43,10 @@ Format: `[PHASE] SEVERITY — title` · status · why deferred · where.
 
 ## Phase 3 — Input Pipeline
 
-### [P3] MEDIUM — An upload declared `application/octet-stream` is rejected before it is ever sniffed
-- **Status:** deferred (product decision, not a defect). Surfaced 2026-07-24 while writing the E2E HTTP test (quick task 260724-64d).
-- **What:** `lib/v1/upload.js`'s multer `fileFilter` is an allowlist on the **client-declared** mimetype and runs BEFORE `sniffImage`. A client that uploads a genuinely valid HEIC/TIFF/PDF but labels it `application/octet-stream` — the default for many HTTP clients and a common n8n binary-payload shape — gets `422 invalid_parameter` with a message listing the very format it just sent. The magic-byte sniff, which would have routed it correctly, never runs.
-- **Why it matters:** The target consumers are automation pipelines, which are exactly the clients most likely to omit a precise content type. It sits against the project's core value ("never fail to return the best available text/data"), because the bytes were fine.
-- **Why deferred:** The two-gate design is deliberate and documented in `upload.js`; admitting `application/octet-stream` widens the accepted surface at the door, so the trade-off (accept-and-sniff vs reject-early) is a product call, not a bug fix. The authoritative sniff already 422s anything whose real bytes are unknown, so admitting octet-stream would not weaken the actual content check.
-- **Where:** `lib/v1/upload.js` (the `allowed` array), `lib/v1/router.js` (the sniff that follows), `test/e2e-input-http.test.js` (documents the current contract in the HEIC case's comment).
+### [P3] MEDIUM — An upload declared `application/octet-stream` was rejected before it was ever sniffed — RESOLVED
+- **Status:** RESOLVED 2026-07-24 (commit `b5390b5`, quick task 260724-64d). Product decision taken: admit the unlabeled-binary case and let the sniff decide.
+- **Was:** `lib/v1/upload.js`'s multer `fileFilter` refused `application/octet-stream` (and an empty Content-Type) BEFORE `sniffImage`, so a valid document uploaded without a precise type — the common n8n binary-payload shape — got `422` even though its bytes were fine.
+- **Fix:** the fileFilter now admits the unlabeled-binary case; the authoritative sniff still 422s unknown bytes, and an explicitly-declared non-document type (SVG, text/plain) is still refused early. Covered by two e2e cases and two unit cases; all four fail against the previous filter.
 
 ## Live-stack smoke checks (human, not automatable here)
 Recorded by the Phase 1 verifier as **informational** — require a real VPS/tailnet/providers, so they are not gaps in the automated suite:
