@@ -167,18 +167,87 @@ test('normalizeToFrames: BMP → single normalized PNG via @vingle/bmp-js → sh
   assert.equal(meta.height, 18, 'BMP height preserved');
 });
 
-test('normalizeToFrames: BMP path still applies limitInputPixels (no OOM)', async () => {
-  // Encode a larger BMP, then cap maxPixels below its pixel count — the sharp
-  // step (post-decode) must reject via limitInputPixels, proving the guard is on
-  // the BMP branch too.
+// --- CR-03: BMP/HEIC are guarded BEFORE their decoder allocates -------------
+//
+// The test this replaces ("BMP path still applies limitInputPixels (no OOM)")
+// encoded a genuinely large, VALID BMP — so bmp-js allocated the whole raw
+// framebuffer successfully and only then did sharp reject it. It proved the
+// opposite of its title: the OOM had already happened. The real failure mode is
+// a TINY file whose HEADER lies about its size, which is what these exercise.
+
+test('normalizeToFrames: a tiny BMP declaring gigantic dimensions is rejected BEFORE decode', async () => {
+  // 54-byte header claiming 20000x20000 = 4e8 px. @vingle/bmp-js sizes its
+  // allocation straight from these bytes with no cross-check against the file
+  // length, so without the guard this is a 1.6 GB Buffer.alloc from a 54-byte
+  // upload — an OOM kill on a small VPS, reached through a 2-byte 'BM' sniff.
+  const bomb = Buffer.alloc(54);
+  bomb.write('BM', 0, 'ascii');
+  bomb.writeUInt32LE(54, 2); // (dishonest) declared file size
+  bomb.writeUInt32LE(54, 10); // pixel data offset
+  bomb.writeUInt32LE(40, 14); // BITMAPINFOHEADER
+  bomb.writeInt32LE(20000, 18); // width
+  bomb.writeInt32LE(20000, 22); // height
+  bomb.writeUInt16LE(1, 26);
+  bomb.writeUInt16LE(32, 28);
+
+  await assert.rejects(
+    () => normalizeToFrames(bomb, 'image/bmp', { maxPixels: CAPS.MAX_OUTPUT_PIXELS, maxDim: 5000 }),
+    (err) => {
+      assert.equal(err.code, 'image_pixel_cap_exceeded', 'typed, not an OOM or a RangeError');
+      assert.equal(err.status, 413);
+      assert.equal(err.actual, 20000 * 20000, 'reports the DECLARED pixel count');
+      return true;
+    },
+    'the header is validated before bmp-js allocates anything',
+  );
+});
+
+test('normalizeToFrames: a truncated BMP is a typed 422, not a decoder crash', async () => {
+  const stub = Buffer.from([0x42, 0x4d, 0x00, 0x00]); // 'BM' and nothing usable
+  await assert.rejects(
+    () => normalizeToFrames(stub, 'image/bmp', OPTS),
+    (err) => {
+      assert.equal(err.code, 'bmp_truncated');
+      assert.equal(err.status, 422);
+      return true;
+    },
+  );
+});
+
+test('normalizeToFrames: a valid BMP over the pixel cap is rejected by the header guard', async () => {
   const bmp = require('@vingle/bmp-js');
   const W = 300, H = 300;
   const data = Buffer.alloc(W * H * 4, 128);
   const bigBmp = bmp.encode({ data, width: W, height: H }).data;
   await assert.rejects(
     () => normalizeToFrames(bigBmp, 'image/bmp', { maxPixels: 1000, maxDim: 50 }),
-    /pixel limit/i,
-    'BMP decode carries limitInputPixels',
+    (err) => {
+      assert.equal(err.code, 'image_pixel_cap_exceeded', 'the BMP branch has a real pixel cap');
+      assert.equal(err.actual, W * H);
+      return true;
+    },
+  );
+});
+
+test('normalizeToFrames: a HEIC declaring oversized ispe extents is rejected before libheif decodes', async () => {
+  // Take the real fixture and rewrite its primary `ispe` box to claim a
+  // 30000x30000 image. libheif sizes its framebuffer from exactly this box.
+  const heicPath = path.join(FIX, 'sample.heic');
+  const real = fs.readFileSync(heicPath);
+  const bomb = Buffer.from(real);
+  const at = bomb.indexOf('ispe', 0, 'ascii');
+  assert.ok(at > 4, 'the fixture carries an ispe box to tamper with');
+  bomb.writeUInt32BE(30000, at + 8); // width
+  bomb.writeUInt32BE(30000, at + 12); // height
+
+  await assert.rejects(
+    () => normalizeToFrames(bomb, 'image/heic', { maxPixels: CAPS.MAX_OUTPUT_PIXELS, maxDim: 5000 }),
+    (err) => {
+      assert.equal(err.code, 'image_pixel_cap_exceeded', 'HEIC extents are checked pre-decode');
+      assert.equal(err.status, 413);
+      assert.equal(err.actual, 30000 * 30000);
+      return true;
+    },
   );
 });
 
