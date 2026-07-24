@@ -295,6 +295,61 @@ test('normalizeToFrames: a HEIC declaring oversized ispe extents is rejected bef
   );
 });
 
+// G-1 — the ispe scan bounds-checked `i + 12` but read `readUInt32BE(i + 12)`,
+// which consumes bytes i+12..i+15. A HEIC-sniffing upload too short to hold the
+// full box threw a raw RangeError (code ERR_OUT_OF_RANGE, NO status), and the
+// worker maps a status-less error to 500 internal_error + a "job crashed" log.
+// That is the exact alerting-signal destruction WR-03 exists to prevent, on the
+// one path the WR-03 fix did not cover. Every rejection here must be TYPED.
+test('normalizeToFrames: a HEIC truncated mid-ispe is a typed client error, never a RangeError 500 (G-1)', async () => {
+  // 16 bytes: [size=20]['ispe'][version+flags][width] — the height read that
+  // used to run off the end starts exactly at the buffer boundary.
+  const truncated = Buffer.concat([
+    Buffer.from([0, 0, 0, 20]),
+    Buffer.from('ispe', 'ascii'),
+    Buffer.alloc(4, 0),
+    Buffer.from([0, 0, 0x75, 0x30]), // width 30000, height missing entirely
+  ]);
+  assert.equal(truncated.length, 16, 'the buffer ends where the height read begins');
+
+  await assert.rejects(
+    () => normalizeToFrames(truncated, 'image/heic', { maxPixels: CAPS.MAX_OUTPUT_PIXELS, maxDim: 5000 }),
+    (err) => {
+      assert.notEqual(err.code, 'ERR_OUT_OF_RANGE', 'the raw RangeError must not escape');
+      assert.ok(!(err instanceof RangeError), 'a decoder bounds slip is not a client-visible crash');
+      assert.ok(
+        err.status === 413 || err.status === 422,
+        `a malformed HEIC must be typed 413/422, got status=${err.status} code=${err.code}`,
+      );
+      return true;
+    },
+  );
+});
+
+test('normalizeToFrames: an ispe box ending exactly at the buffer end is still read and capped (G-1 boundary)', async () => {
+  // The minimum buffer the scan may legally read: the box occupies bytes 0..19
+  // and the height read ends on the final byte. Off-by-one in the other
+  // direction (requiring i+17) would silently stop enforcing the cap here.
+  const exact = Buffer.concat([
+    Buffer.from([0, 0, 0, 20]),
+    Buffer.from('ispe', 'ascii'),
+    Buffer.alloc(4, 0),
+    Buffer.from([0, 0, 0x75, 0x30]), // width 30000
+    Buffer.from([0, 0, 0x75, 0x30]), // height 30000
+  ]);
+  assert.equal(exact.length, 20, 'exactly one complete ispe box, nothing more');
+
+  await assert.rejects(
+    () => normalizeToFrames(exact, 'image/heic', { maxPixels: CAPS.MAX_OUTPUT_PIXELS, maxDim: 5000 }),
+    (err) => {
+      assert.equal(err.code, 'image_pixel_cap_exceeded', 'the cap still fires at the exact boundary');
+      assert.equal(err.status, 413);
+      assert.equal(err.actual, 30000 * 30000);
+      return true;
+    },
+  );
+});
+
 test('normalizeToFrames: HEIC → single normalized PNG (host-asserted if a real HEIC fixture exists, else Docker smoke A5)', async (t) => {
   // heic-convert is WASM and decodes on host, but producing a real HEIC on the
   // host is impractical (no host encoder), so this is skip-guarded on the
