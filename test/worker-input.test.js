@@ -194,6 +194,60 @@ test('runInputJob: over-cap PDF fails typed (pdf_too_many_pages), temp cleaned',
   assert.equal(failed.errorCode, 'pdf_too_many_pages');
 });
 
+// WR-07 — a temp-cleanup failure must NOT overwrite a successful job outcome.
+// The rm ran in an unguarded `finally`, so its rejection replaced the try's
+// result and propagated out of runInputJob → runJob → router's .catch() →
+// jobs.fail(internal_error), turning a completed job into a crash report.
+test('runInputJob: a temp-cleanup failure does not clobber a successful job (WR-07)', async (t) => {
+  clearLines();
+  t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
+
+  // Reach the REAL failure mode rather than stubbing fs: make the job's own
+  // temp dir unwritable while the job is in flight, so the recursive rm hits
+  // EACCES unlinking input.pdf (force:true only suppresses ENOENT). The pdfinfo
+  // call is the hook — by then createJobTempDir has run and input.pdf is written.
+  let victimDir = null;
+  const basePdfSpawn = makePdfSpawn({ pages: 1 });
+  const spawnFn = (cmd, args) => {
+    if (!victimDir) {
+      victimDir = temp._activeDirsForTest()[0];
+      if (victimDir) fs.chmodSync(victimDir, 0o500); // r-x: cannot unlink children
+    }
+    return basePdfSpawn(cmd, args);
+  };
+  t.after(() => {
+    if (victimDir && fs.existsSync(victimDir)) {
+      fs.chmodSync(victimDir, 0o700);
+      fs.rmSync(victimDir, { recursive: true, force: true });
+    }
+  });
+
+  const jobId = 'input-cleanupfail-' + Date.now();
+  jobs.create(jobId, { model_id: 'cascade:balanced' });
+
+  // Must not reject — the failure is swallowed and logged, not propagated.
+  await assert.doesNotReject(() => runJob(jobId, {
+    model: null, forced: false, profile: 'balanced',
+    buffer: NATIVE_PDF, mimeType: 'application/pdf', mode: 'quality',
+    apiKey: null, preset: undefined, requestId: 'input-req-cleanup',
+    spawnFn,
+  }));
+  await flush();
+
+  assert.ok(victimDir, 'the job created a temp dir to sabotage');
+  assert.ok(fs.existsSync(victimDir), 'the rm genuinely failed (dir still on disk)');
+
+  const job = jobs.get(jobId);
+  assert.equal(job.status, 'succeeded', 'the job keeps its successful outcome');
+  assert.equal(job.result.pages.length, 1, 'results are intact');
+
+  const warn = captured.find((l) => l.msg === 'temp_cleanup_failed' && l.job_id === jobId);
+  assert.ok(warn, 'the cleanup failure is logged rather than swallowed silently');
+
+  // The registry entry is still dropped, so a later drain will not retry it.
+  assert.equal(temp._activeDirsForTest().length, 0, 'the dir is deregistered even when rm fails');
+});
+
 test('runInputJob: single-image PNG still routes to the unchanged forced/cascade path', async (t) => {
   clearLines();
   t.after(() => { if (jobs._clearForTest) jobs._clearForTest(); });
