@@ -29,9 +29,14 @@ Phase: 4 (Structured Extraction) — COMPLETE + VERIFIED. All 4 phases done; mil
 Plan: 1 of 1 (04-01)
 Status: mode=structured ships — schema-validated JSON via a vision LLM (constrained decoding + ajv + one repair + fall-through), ocr.space excluded by capability, injection-safe delimited-data prompt, additive envelope. runCascade untouched. 3/3 success criteria + STR-01/02/03 verified goal-backward (`04-VERIFICATION.md`).
 
-Current evidence (re-run, not cited): host suite **406 passed / 0 failed / 2 skipped** (poppler-gated input-PDF e2e); in-container **structured 38/38** and **input e2e 10/10**, both 0 skipped, on a rebuilt image (ajv included); Docker build OK with the memory cgroup enforced; audit 0 vulns; `node --check` clean.
+Current evidence (re-run, not cited): host suite **411 passed / 0 failed / 2 skipped** (poppler-gated input-PDF e2e; +5 for the G-B fence tests); Docker build OK with the memory cgroup enforced; audit 0 vulns; `node --check` clean. Live: real OCR (ocr.space) and real structured extraction (Ollama minimax-m3/qwen3.5:397b) both succeed through the public Cloudflare Tunnel.
 
 Also this session: fixed the octet-stream upload gate (unlabeled binary now reaches the sniff), and closed the Phase-3 gaps (G-1, G-2), the monotonic-clock defect, and the test temp-root race (quick task 260724-64d).
+
+**Live UAT (2026-07-24, via a real Cloudflare Tunnel — `04-UAT.md`) found the "feature-complete" claim was premature and fixed it:** against the real Ollama Cloud account, two of the three pinned model tags were RETIRED (410) and `mode=structured` was 100% non-functional. Two defects closed, both re-verified live end-to-end through `https://ocr.luishelguera.dev`:
+- **G-A** (47e5bae): repointed the Ollama engines to live vision models (minimax-m3 / gemma4:31b / qwen3.5:397b — the retired gemini + qwen3-vl tags were dead).
+- **G-B** (5d78eef): live vision models fence their JSON in ```json ... ```; the structured parser now strips fences before validating (mocked tests never hit this).
+A Cloudflare-Tunnel deploy stack was added for the home/WSL topology (docker-compose.tunnel.yml + Caddyfile.tunnel, only /v1 public). Live evidence: real OCR and real structured extraction both succeed through the public URL; the admin panel is correctly 404 there.
 
 Still open (deferred, non-blocking): Human-Verification #3 (Phase 3 caps cross-validation policy); the 5 Info findings in `03-REVIEW.md`; and the Phase-4 follow-ups in `PENDING-ISSUES.md` (ReDoS-via-pattern hardening, multi-page structured, admin-panel structured UI).
 Last activity: 2026-07-24

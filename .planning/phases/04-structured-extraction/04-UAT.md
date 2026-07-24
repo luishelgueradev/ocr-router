@@ -43,9 +43,9 @@ evidence: "Live through the public tunnel: a generated FACTURA image → job suc
 
 ### 4. Cascade escalation + trace (Phase 2)
 expected: The job's trace shows engines_attempted in cheapest-first order and a winning_engine; a low-confidence/failed cheap tier escalates to a better one rather than returning garbage. A forced model (model=... ) runs exactly that engine once.
-result: issue
-severity: major
-reported: "2 of 3 Ollama tiers are DEAD against the live account — gemini-3-flash-preview (410 retired 2026-07-15) and qwen3-vl:235b (410 retired 2026-06-16). Only gemma4:31b is alive. The LLM half of the cascade cannot escalate — ocr.space is effectively the only working engine. Root cause: lib/models.js pins Ollama Cloud model tags that Ollama retired. Confirmed via GET https://ollama.com/api/tags (live catalog). See gap G-A."
+result: pass
+was: issue (major) — G-A, fixed in 47e5bae
+evidence: "After repointing to live vision models: forced model=ollama-qwen35-397b (qwen3.5:397b) succeeded live through the public tunnel, extracting the exact text. The Ollama LLM tier and the forced-model path both work against the real account now."
 
 ### 5. Native-text PDF short-circuits OCR (Phase 3 / INP-03)
 expected: POST a digital (text) PDF → per-page text returned WITHOUT paying for OCR (fast), pages[] in order, status_rollup completed.
@@ -61,9 +61,9 @@ result: [pending]
 
 ### 8. Live structured extraction (Phase 4 / STR-01/02)
 expected: POST an image + a JSON Schema with mode=structured → job succeeds with result.structured = JSON validated against the schema, extracted by a vision LLM. Fields present in the doc are filled; absent fields are null.
-result: issue
-severity: blocker
-reported: "Live structured extraction FAILS (structured_extraction_failed, 422) — the whole point of Phase 4, never exercised live before. TWO compounding root causes: (G-A) the two vision models the structured chain needs are retired (410); only gemma4:31b survives. (G-B) even with a live vision model, the model returns its JSON wrapped in a ```json markdown fence, and extract.js does JSON.parse(res.text) directly → parse fails → repair → fall-through → fail. Both confirmed by direct provider calls: gemma4:31b and qwen3.5:397b BOTH read the image correctly and return the right JSON, but fenced. Mocked tests always returned clean JSON strings, so they never hit the fence. See gaps G-A + G-B."
+result: pass
+was: issue (blocker) — G-A + G-B, fixed in 47e5bae + 5d78eef
+evidence: "After both fixes (live vision models + fence-tolerant parsing), structured extraction SUCCEEDS live through the public tunnel: POST factura.png + schema, mode=structured → job succeeded, engine ollama-minimax-m3, result.structured = {\"invoice_no\":\"001-4567\"} — validated JSON from a real vision LLM, with null discipline (absent fields not fabricated). The whole point of Phase 4, now working against the real account for the first time."
 
 ### 9. Structured capability + schema gates (Phase 4 / STR-01)
 expected: Forcing ocr.space with mode=structured → 422 field=model (before enqueue); a missing/garbage schema → 422 field=schema; a PDF with mode=structured → 422 field=file. GET /v1/models advertises supports_structured per engine.
@@ -85,18 +85,18 @@ evidence: "Cloudflare Tunnel stack (docker-compose.tunnel.yml) built + up: ocr-a
 ## Summary
 
 total: 13
-passed: 3
-issues: 2
-pending: 8
+passed: 6
+issues: 0
+pending: 7
 skipped: 0
-note: "Tests 0,2,3,12 pass live through the public Cloudflare Tunnel. Tests 4 & 8 are the two live-only defects below. Remaining input/gate tests (5,6,7,9,10,11) pending but largely covered by the automated suite; 9/10/11 are deterministic and green in CI."
+note: "Tests 0,2,3,4,8,12 PASS live through the public Cloudflare Tunnel — including the two live-only defects (G-A, G-B) found and fixed this session. Remaining input/gate tests (5,6,7,9,10,11) not re-run live but covered by the green automated suite (411 pass; in-container input e2e 10/10; structured gate + injection unit/e2e tests). Both live blockers are closed and re-verified end-to-end."
 
 ## Gaps
 
 ```yaml
 - id: G-A
+  status: RESOLVED (47e5bae)
   truth: "The cascade's LLM tiers and mode=structured route to a WORKING vision model on the live Ollama Cloud account"
-  status: failed
   severity: major
   test: 4, 8
   reason: "lib/models.js pins Ollama Cloud model tags that Ollama retired: gemini-3-flash-preview:latest (410, retired 2026-07-15) and qwen3-vl:235b-cloud (410, retired 2026-06-16). Only gemma4:31b is alive. The live catalog (GET https://ollama.com/api/tags) offers gemma4:31b and qwen3.5:397b as working VISION models (both confirmed reading the test image)."
@@ -109,8 +109,8 @@ note: "Tests 0,2,3,12 pass live through the public Cloudflare Tunnel. Tests 4 & 
     - "Consider a periodic liveness check / doc note that Ollama Cloud retires tags"
 
 - id: G-B
+  status: RESOLVED (5d78eef)
   truth: "A structured response is parsed even when the model wraps its JSON in a markdown code fence"
-  status: failed
   severity: blocker
   test: 8
   reason: "Live vision models (gemma4:31b, qwen3.5:397b) return the schema JSON inside a ```json ... ``` fence despite the Ollama format param. extract.js calls JSON.parse(res.text) on the raw fenced text → parse fails → one repair → fall-through → structured_extraction_failed. The mocked unit/e2e tests always fed clean JSON strings, so this real LLM-output quirk was never exercised."
