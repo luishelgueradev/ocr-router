@@ -204,6 +204,36 @@ test('drainAndCancel: a temp dir created during the drain window is still remove
   assert.ok(!fs.existsSync(lateDir), 'a dir created during the drain window must NOT leak');
 });
 
+// WR-06 — a fast drain must not leave the grace-window timer armed. An unref'd
+// timer cannot hold the event loop, so assert the handle is dead after the race.
+test('drainAndCancel: the grace-window timer is cleared once the drain wins (WR-06)', async () => {
+  const { drainAndCancel } = freshShutdown();
+  const { store, fakeJobs } = buildFakeJobs();
+  const fakeLimiter = { stop: async () => {} };
+  const fakeTemp = { drainAllTempDirs: async () => 0 };
+
+  const armed = [];
+  const realSetTimeout = global.setTimeout;
+  global.setTimeout = (fn, ms, ...rest) => {
+    const t = realSetTimeout(fn, ms, ...rest);
+    armed.push({ ms, t });
+    return t;
+  };
+
+  try {
+    store.set('jfast', { job_id: 'jfast', status: 'queued' });
+    await drainAndCancel(35000, { jobs: fakeJobs, limiter: fakeLimiter, temp: fakeTemp });
+  } finally {
+    global.setTimeout = realSetTimeout;
+  }
+
+  const grace = armed.find((a) => a.ms === 35000);
+  assert.ok(grace, 'the 35s grace timer was armed');
+  // A cleared Node timeout is destroyed; a still-pending one is not. Without the
+  // clearTimeout this handle stayed on the loop and delayed exit by ~35s.
+  assert.equal(grace.t._destroyed, true, 'grace timer was cleared, not left pending for 35s');
+});
+
 // Test 5: iterateAll() yields live references in the real jobs module (I-02 acceptance)
 // WR-08 fix — teardown via t.after() so the inserted record does NOT leak into
 // subsequent tests that enumerate the real jobs store (TTL is 1h, so without
