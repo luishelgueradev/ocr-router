@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Phase 3 code review + fixes complete (18/18 findings); 03-VERIFICATION.md is STALE — needs re-verification
-last_updated: "2026-07-24T00:00:00.000Z"
+stopped_at: Phase 3 verification gaps (G-1, G-2, HVR#1) closed by quick task 260724-64d, plus a monotonic-clock defect and a test temp-root race found while re-auditing
+last_updated: "2026-07-24T05:00:00.000Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 4
@@ -25,10 +25,14 @@ See: .planning/PROJECT.md (updated 2026-07-23)
 
 ## Current Position
 
-Phase: 3 (Input Pipeline) — REVIEWED + FIXED, PENDING RE-VERIFICATION
+Phase: 3 (Input Pipeline) — REVIEWED + FIXED + RE-VERIFIED; verification gaps CLOSED
 Plan: 7 of 7
-Status: 7/7 plans done. Code review found 23 issues (7 Critical, 11 Warning, 5 Info); all 18 Critical+Warning fixed in 17 atomic commits. Host suite 352/352 green, in-container Docker smoke 8/8 green against a REBUILT image. `03-VERIFICATION.md` predates the review and asserts "no gaps" on code that had 7 blockers — it must be re-run before the phase is called complete. The 5 Info findings remain open in `03-REVIEW.md`.
-Last activity: 2026-07-23
+Status: 7/7 plans done. Code review found 23 issues (7 Critical, 11 Warning, 5 Info); all 18 Critical+Warning fixed. Re-verification returned `gaps_found` (G-1, G-2 + 3 human-verification items); quick task **260724-64d** closed G-1, G-2 and Human-Verification #1, and fixed two further defects it surfaced — see the appendix in `03-VERIFICATION.md`.
+
+Current evidence (re-run, not cited): host suite **364 passed / 0 failed / 2 skipped** (the poppler-gated PDF E2E cases), stable across 3 consecutive runs; in-container **E2E 8/8, 0 skipped** and **Docker smoke 8/8, 0 skipped** against a rebuilt image.
+
+Still open: Human-Verification #3 (caps cross-validation policy — operator convention vs boot check), the 5 Info findings in `03-REVIEW.md`, and one new deferred item in `PENDING-ISSUES.md` (uploads declared `application/octet-stream` are rejected before sniffing).
+Last activity: 2026-07-24
 
 Progress: [██████████] 100%
 
@@ -100,6 +104,10 @@ Recent decisions affecting current work:
 - [Phase 3]: 03-REVIEW: temp drain ran BEFORE the job drain, rm -rf'ing the input PDF out from under in-flight pdftoppm — the exact Pitfall-2 it claimed to close. Reordered after limiter.stop(), plus a boot-time sweep of orphaned ocr-job-* dirs to recover from SIGKILL leaks
 - [Phase 3]: 03-REVIEW: process lesson — the phase verifier passed 5/5 with "no gaps" on code carrying 7 blockers, because it checked that the code matched what module headers CLAIMED, and several of those claims were false. Tests encoded the bugs too (a case named "BMP path still applies limitInputPixels (no OOM)" fed a VALID large BMP). Verification must not treat in-code assertions as evidence
 
+- [Phase 3]: 260724-64d: ALL deadline/duration arithmetic runs on a monotonic clock (lib/clock.js); Date.now survives only behind clock.wallMs() for client-facing absolute timestamps (jobs.js expires_at) — a backward wall-clock step was inflating `remaining` and letting the cascade escalate past its budget, and the same arithmetic backed worker.js MAX_JOB_MS
+- [Phase 3]: 260724-64d: temp.js's orphan sweep documents a "single-instance per container" precondition that the parallel test runner violates — test processes get a private TMPDIR (test/helpers/isolated-tmp.js) rather than weakening the sweep
+- [Phase 3]: 260724-64d: process lesson — the prior verification CITED "host suite 352/352" without re-running it; the first run this session was 347 tests with 3 failures. Re-run the gate, and prove each new test fails against the pre-fix code before believing it
+
 ### Pending Todos
 
 None yet.
@@ -109,6 +117,12 @@ None yet.
 - [Phase 2]: Confidence heuristic is the hardest-to-tune, highest-risk logic (false-good garbage detection). Research-flag: warrants a focused spike + small labeled calibration sample during planning.
 - [Phase 2]: Ollama Cloud quota resets on 5h/7-day windows and burns fastest on the 235B model — confirm real quota numbers before finalizing the global budget cap.
 - [Phase 3]: Subprocess sandboxing mechanics (memory/pid caps, clean kill) and HEIC-in-Docker (patched libheif) need validation against the target VPS/Docker setup. Research-flag.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260724-64d | Close Phase 3 verification gaps (G-1, G-2, HVR#1) + monotonic clock defect | 2026-07-24 | 65568d1 | [260724-64d-phase3-gaps-and-monotonic-clock](./quick/260724-64d-phase3-gaps-and-monotonic-clock/) |
 
 ## Deferred Items
 
@@ -121,6 +135,6 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-24
-Stopped at: Phase 3 code review (23 findings) + fix pass (18/18) complete and committed. Independently re-validated: host suite 352/352, Docker smoke 8/8 on a rebuilt image.
+Stopped at: Quick task 260724-64d complete — Phase 3 verification gaps G-1 and G-2 closed, Human-Verification #1 closed by a real HTTP E2E test, plus two defects found while re-auditing (wall-clock deadlines; a cross-process temp-dir race in the test suite). All evidence re-run, not cited: host 364/0/2-skipped across 3 runs; in-container E2E 8/8 and Docker smoke 8/8, both 0 skipped, on a rebuilt image.
 Resume file: None
-Next action: re-run the Phase 3 verifier — `03-VERIFICATION.md` is stale (it passed the pre-fix code). Optionally re-review to catch regressions from the 17 fix commits, then Phase 4 (Structured Extraction, independent of Phase 3).
+Next action: Phase 4 (Structured Extraction) — independent of Phase 3. Optional first: decide Human-Verification #3 (enforce RASTER_MAX_DIM^2 <= MAX_OUTPUT_PIXELS at boot, or keep it an operator convention) and triage the new PENDING-ISSUES item about `application/octet-stream` uploads, which matters for n8n-style clients.

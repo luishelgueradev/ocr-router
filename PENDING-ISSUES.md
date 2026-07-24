@@ -41,6 +41,15 @@ Format: `[PHASE] SEVERITY — title` · status · why deferred · where.
 - **Live-key heuristic-threshold calibration:** confirm the provisional thresholds (`fast 0.50 / balanced 0.60 / quality 0.70`) and the WR-01 formula shape against real ocr.space + Ollama outputs on a small labeled clean/garbage/hard sample. All thresholds are env-overridable (`PROFILE_*_THRESHOLD`) so this needs no code change once the shape is fixed.
 - **Ollama Cloud quota-headroom:** confirm the real 5h / 7-day window numbers and that the `budgetMs` / chain defaults fit within them (235B burns fastest). The code already reacts to a live 429 (quota short-circuit, CR-01-fixed) rather than to fixed numbers, so this is verification, not a code blocker.
 
+## Phase 3 — Input Pipeline
+
+### [P3] MEDIUM — An upload declared `application/octet-stream` is rejected before it is ever sniffed
+- **Status:** deferred (product decision, not a defect). Surfaced 2026-07-24 while writing the E2E HTTP test (quick task 260724-64d).
+- **What:** `lib/v1/upload.js`'s multer `fileFilter` is an allowlist on the **client-declared** mimetype and runs BEFORE `sniffImage`. A client that uploads a genuinely valid HEIC/TIFF/PDF but labels it `application/octet-stream` — the default for many HTTP clients and a common n8n binary-payload shape — gets `422 invalid_parameter` with a message listing the very format it just sent. The magic-byte sniff, which would have routed it correctly, never runs.
+- **Why it matters:** The target consumers are automation pipelines, which are exactly the clients most likely to omit a precise content type. It sits against the project's core value ("never fail to return the best available text/data"), because the bytes were fine.
+- **Why deferred:** The two-gate design is deliberate and documented in `upload.js`; admitting `application/octet-stream` widens the accepted surface at the door, so the trade-off (accept-and-sniff vs reject-early) is a product call, not a bug fix. The authoritative sniff already 422s anything whose real bytes are unknown, so admitting octet-stream would not weaken the actual content check.
+- **Where:** `lib/v1/upload.js` (the `allowed` array), `lib/v1/router.js` (the sniff that follows), `test/e2e-input-http.test.js` (documents the current contract in the HEIC case's comment).
+
 ## Live-stack smoke checks (human, not automatable here)
 Recorded by the Phase 1 verifier as **informational** — require a real VPS/tailnet/providers, so they are not gaps in the automated suite:
 - Real ACME/HTTPS issuance + Tailscale admin binding on the VPS.

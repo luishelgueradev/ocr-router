@@ -2,6 +2,11 @@
 phase: 03-input-pipeline
 verified: 2026-07-24T03:07:01Z
 status: gaps_found
+# The verdict below stands as written — it was correct when written. Both gaps
+# and Human-Verification item #1 were closed afterwards; see the appendix at the
+# end of this file and the quick task it links to.
+gaps_resolved_by: .planning/quick/260724-64d-phase3-gaps-and-monotonic-clock/
+gaps_resolved_on: 2026-07-24
 score: 5/5 success criteria verified (7/7 requirements satisfied)
 overrides_applied: 0
 re_verification:
@@ -248,3 +253,43 @@ Neither gap invalidates a Success Criterion, and neither is a memory-exhaustion 
 
 _Verified: 2026-07-24T03:07:01Z_
 _Verifier: Claude (gsd-verifier), re-verification after code-review fix pass_
+
+---
+
+## Appendix — gap resolution (2026-07-24, quick task 260724-64d)
+
+Everything above is the verifier's report as written. This appendix records what
+happened to the open items; it does not amend the verdict.
+
+| Open item | Outcome | Evidence |
+|---|---|---|
+| **G-1** — ispe bounds off-by-four; untyped `RangeError` → 500 | **closed** | Bound corrected to the 16 bytes the reads consume, and the guard moved inside the WR-03 try. Repro before: `RangeError / ERR_OUT_OF_RANGE / status=undefined`. After: `image_decode_failed / status=422`. Also asserted over full HTTP (`test/e2e-input-http.test.js`). Commit `2959b94`. |
+| **G-1 follow-on** — "route `assertBmpWithinCap` through `typedDecodeError` too" | **closed** | Commit `65568d1`. No reachable out-of-bounds read existed on that path; moving it inside the try keeps that true by construction. |
+| **G-2** — ispe scan bypassable by legal box encodings | **closed** | Payload offset now resolved per encoding (32-bit, 64-bit extended `size==1`, `size==0` to-EOF). Three new tests **fail against the previous scan** and pass against the new one. Commit `310fab0`. |
+| **G-2** — "the container's own memory limit" did not exist | **closed** | `mem_limit` + `memswap_limit` added to `docker-compose.yml`. `docker compose config` renders `1073741824`; the kernel reports `memory.max = 1073741824` inside the running container. The module comment now states the true residual instead of a narrower one. Commit `310fab0`. |
+| **Human Verification #1** — the assembled HTTP path had never run | **closed** | `test/e2e-input-http.test.js`: real server, real multipart, real auth, real sniff, real decode, real pipeline, real queue, real worker, real envelope — only `runOCR` is substituted. **8/8 in the container, 0 skipped**, covering TIFF, GIF, HEIC, BMP, native PDF and scanned PDF. Verified non-vacuous. Commit `0f10fd3`. |
+| **Human Verification #2** — accept-or-fix on the ispe blind spot | **resolved by fixing**, not by accepting. | See G-2 above. |
+| **Human Verification #3** — caps cross-validation policy | **still open** | Untouched; `RASTER_MAX_DIM² <= MAX_OUTPUT_PIXELS` is still an operator convention rather than a boot check. |
+| INFO findings IN-02, IN-03, and the two over-claiming test titles | **still open** | Untouched. |
+
+### Two defects the verification did not catch
+
+Found while re-auditing the phase after a session interruption, both by probing
+rather than reading:
+
+1. **The suite was not the stable "352/352 green" the phase record asserts** — it
+   failed 2 of 6 runs. Root cause was not a flaky test: every budget and deadline
+   was computed on the **wall clock**, so a backward NTP/VM step inflated
+   `remaining` and let the runner escalate past its budget (captured:
+   `stopped_reason=passed elapsed=-791`). The same arithmetic backed
+   `worker.js`'s `deadline = Date.now() + MAX_JOB_MS` — the single authoritative
+   job deadline JOB-04/CASC-08 exist to enforce. Migrated to a monotonic clock
+   (`lib/clock.js`); commit `35e8be4`.
+2. **The WR-10 orphan sweep deleted temp dirs owned by other test processes**,
+   because `node --test` runs files in parallel against a shared `/tmp` while the
+   sweep documents a single-instance precondition. Fixed on the test side; the
+   sweep itself is unchanged. Commit `4314563`.
+
+Process note, extending the one already recorded in STATE.md: the previous
+verification cited "host suite 352/352" without re-running it. It was 347 tests
+with 3 failures on the first run of this session. A cited number is not evidence.
