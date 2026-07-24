@@ -3,3 +3,9 @@ node_modules/
 imagenes/*.txt
 docs/superpowers/specs/.cache/
 .playwright-cli/
+
+# Added by git-pushear: protect secrets + editor swap files
+.env.*
+!.env.example
+*.swp
+.*.swp
