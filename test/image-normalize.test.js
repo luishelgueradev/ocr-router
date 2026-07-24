@@ -78,8 +78,12 @@ test('normalizeToFrames: over-pixel MULTIPAGE input is rejected via limitInputPi
     .tiff().toBuffer();
   await assert.rejects(
     () => normalizeToFrames(big, 'image/tiff', { maxPixels: 1000, maxDim: 50 }),
-    /pixel limit/i,
-    'decode rejects rather than OOMs',
+    (err) => {
+      assert.equal(err.code, 'image_pixel_cap_exceeded', 'typed 413, not an untyped 500 (WR-03)');
+      assert.equal(err.status, 413);
+      return true;
+    },
+    'decode rejects rather than OOMs, and does so TYPED',
   );
 });
 
@@ -88,8 +92,12 @@ test('normalizeToFrames: over-pixel SINGLE-frame input is rejected via limitInpu
     .png().toBuffer();
   await assert.rejects(
     () => normalizeToFrames(big, 'image/png', { maxPixels: 1000, maxDim: 50 }),
-    /pixel limit/i,
-    'single-frame decode carries limitInputPixels too',
+    (err) => {
+      assert.equal(err.code, 'image_pixel_cap_exceeded', 'typed 413, not an untyped 500 (WR-03)');
+      assert.equal(err.status, 413);
+      return true;
+    },
+    'single-frame decode carries limitInputPixels too, typed',
   );
 });
 
@@ -143,6 +151,42 @@ test('normalizeFrames: single-frame types yield exactly one frame', async () => 
   const seen = [];
   for await (const f of normalizeFrames(png, 'image/png', OPTS)) seen.push(f);
   assert.equal(seen.length, 1, 'a plain PNG is a one-frame stream');
+});
+
+// --- WR-03: every decoder failure carries a client status, never a bare 500 --
+// worker.js maps only status 413/422 to a typed client failure; everything else
+// becomes internal_error with its detail deliberately unlogged (OPS-05). So an
+// untyped decoder error made real attack traffic and real malformed uploads
+// indistinguishable from genuine server bugs.
+
+test('every decoder failure carries a 413/422 status (WR-03)', async () => {
+  const cases = [
+    ['malformed GIF body', Buffer.concat([Buffer.from('GIF89a', 'ascii'), Buffer.alloc(64, 0xff)]), 'image/gif'],
+    ['malformed HEIC body', Buffer.concat([
+      Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypheic', 'ascii'), Buffer.alloc(200, 0x00),
+    ]), 'image/heic'],
+    ['garbage claiming to be PNG', Buffer.alloc(128, 0x7f), 'image/png'],
+    ['garbage claiming to be JPEG', Buffer.alloc(128, 0x31), 'image/jpeg'],
+  ];
+
+  for (const [label, buf, type] of cases) {
+    await assert.rejects(
+      () => normalizeToFrames(buf, type, OPTS),
+      (err) => {
+        assert.ok(
+          err.status === 413 || err.status === 422,
+          `${label}: must be a typed client failure, got status=${err.status} code=${err.code}`,
+        );
+        assert.ok(
+          err.code === 'image_decode_failed' || err.code === 'image_pixel_cap_exceeded',
+          `${label}: typed code, got ${err.code}`,
+        );
+        assert.equal(typeof err.detail, 'string', `${label}: detail is a bounded string`);
+        return true;
+      },
+      `${label} must not surface as an untyped internal_error`,
+    );
+  }
 });
 
 test('normalizeToFrames: an unknown sniffed type throws a typed error', async () => {
