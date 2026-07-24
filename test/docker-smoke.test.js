@@ -6,12 +6,13 @@
 // image (`bash scripts/docker-smoke.sh`), where `poppler-utils` (pdftoppm/
 // pdfinfo), dash `ulimit`, and coreutils `timeout` are present.
 //
-// The skip-guard hinges on ONE signal — is `pdftoppm` on PATH? — because that
-// binary is the thing that is Docker-only by design (D-11). On the host (no
-// poppler) every real-dependency case SKIPS, so `node --test test/docker-smoke
-// .test.js` is green-by-skip; in the image every case EXECUTES. That single
-// switch also fronts the HEIC/subprocess/temp cases so the file is a clean
-// host↔image binary (host = all skip, image = all run), matching D-11.
+// EACH case is gated on the capability it actually needs (WR-11), not on one
+// blanket switch. The poppler cases skip on a host without `pdftoppm`/`pdfinfo`
+// (Docker-only by design, D-11); the HEIC case is gated on `heic-convert`
+// instead, so the A5 risk-flag can never be silently skipped just because
+// poppler is absent; and the pure-fs temp-lifecycle case is gated on nothing and
+// runs everywhere. A skipped test reports green, so a guard that over-skips is
+// indistinguishable from a passing one.
 //
 // What it proves against the real base image (the two STATE risk-flags):
 //   1. A6  — dash `ulimit` + coreutils `timeout` exist and wrap the child.
@@ -66,13 +67,32 @@ function hasBinary(bin) {
 }
 const HAS_POPPLER = hasBinary('pdftoppm') && hasBinary('pdfinfo');
 
-// Guard helper: skip (green) on the host, run for real in the image.
-function requirePoppler(t) {
-  if (!HAS_POPPLER) {
-    t.skip('poppler Docker-only (D-11) — real-dependency smoke runs inside the image');
+// WR-11 — gate each case on the capability it ACTUALLY needs. Several cases
+// (HEIC decode, the temp-dir lifecycle) were gated on poppler, which they do
+// not use at all. The consequence was that the A5 HEIC risk-flag — the very
+// reason CLAUDE.md picked heic-convert over sharp — was silently SKIPPED in any
+// environment that has heic-convert but not poppler (a CI runner, a future
+// slimmed image), and a skipped test reports green.
+let HAS_HEIC = true;
+try { require('heic-convert'); } catch { HAS_HEIC = false; }
+
+// Guard helper: skip (green) when the capability is absent, run for real when
+// it is present. NOTE: `t.skip()` in node --test does NOT halt execution — the
+// guard works only because every caller `return`s on false. Keep it that way.
+function requireCap(t, ok, why) {
+  if (!ok) {
+    t.skip(why);
     return false;
   }
   return true;
+}
+
+function requirePoppler(t) {
+  return requireCap(t, HAS_POPPLER, 'poppler Docker-only (D-11) — real-dependency smoke runs inside the image');
+}
+
+function requireHeic(t) {
+  return requireCap(t, HAS_HEIC, 'heic-convert unavailable — A5 HEIC decode cannot be exercised here');
 }
 
 test('smoke/A6: dash ulimit + coreutils timeout wrap a child in the base image', async (t) => {
@@ -126,10 +146,11 @@ test('smoke/A1: real ulimit -v ALLOWS a legit page but a tiny -v REJECTS the sam
   // spawnCapture rejects. This proves the -v guard actually constrains the real
   // process (T-03-19). NOTE: NO trailing '-' — pdftoppm streams to stdout when
   // the output-root is omitted (the trailing-'-' bug fixed in rasterize.js).
+  // Mirrors renderPage's unknown-geometry argv: `-r` alone, never `-r` together
+  // with `-scale-to` (poppler ignores `-r` when `-scale-to` is present — CR-06).
   const args = [
     '-r', String(CAPS.RASTER_DPI), '-png',
     '-f', '1', '-l', '1', '-singlefile',
-    '-scale-to', String(CAPS.RASTER_MAX_DIM),
     SCANNED_PDF,
   ];
   await assert.rejects(
@@ -146,7 +167,10 @@ test('smoke/A1: real ulimit -v ALLOWS a legit page but a tiny -v REJECTS the sam
 });
 
 test('smoke/A5: a real HEIC decodes through heic-convert → sharp to a normalized PNG', async (t) => {
-  if (!requirePoppler(t)) return; // gated on the image signal per D-11
+  // WR-11: gated on heic-convert, the capability this case actually uses — NOT
+  // on poppler, which it never touches. The A5 risk-flag must not be skipped
+  // silently just because poppler happens to be absent.
+  if (!requireHeic(t)) return;
   assert.ok(fs.existsSync(SAMPLE_HEIC), 'real HEIC fixture present');
 
   const frames = await normalizeToFrames(fs.readFileSync(SAMPLE_HEIC), 'image/heic', {});
@@ -194,7 +218,8 @@ test('smoke/Pitfall-4: coreutils timeout is the hard wall-clock backstop', async
 });
 
 test('smoke/Pitfall-2: a mid-job SIGTERM (shutdown drain) leaves no temp dir on disk', async (t) => {
-  if (!requirePoppler(t)) return;
+  // WR-11: no guard at all — this case is pure fs and needs no external binary,
+  // so it runs everywhere (host AND image) instead of reporting a green skip.
   t.after(() => drainAllTempDirs());
 
   const dir = await createJobTempDir();
