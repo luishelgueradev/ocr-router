@@ -5,6 +5,10 @@
 // substitute lib/logger in require.cache and patch cascade/runner.runCascade
 // BEFORE requiring the worker (which destructures runCascade at load time).
 
+// Private temp root for THIS test process — node --test runs files in
+// parallel and temp.js's orphan sweep is global to os.tmpdir(). Must come
+// before anything that creates or sweeps a temp dir. See the helper.
+require('./helpers/isolated-tmp');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -259,10 +263,17 @@ test('runInputJob: pages routed past the job deadline are errors, not empty succ
   // A controllable clock offset. The first page consumes the whole job budget
   // (a slow provider), so pages 2 and 3 are attempted PAST the deadline —
   // exactly the production scenario.
-  const realNow = Date.now;
+  //
+  // This drives the injected MONOTONIC clock, not global Date.now. The job
+  // deadline no longer reads the wall clock at all — that was the defect this
+  // suite's sibling regression (test/clock.test.js) covers — so patching
+  // Date.now here would advance nothing and the test would silently stop
+  // exercising the past-deadline path.
+  const clock = require('../lib/clock');
+  const realMono = clock.monotonicMs;
   let offset = 0;
-  Date.now = () => realNow() + offset;
-  t.after(() => { Date.now = realNow; });
+  clock.monotonicMs = () => realMono.call(clock) + offset;
+  t.after(() => { clock.monotonicMs = realMono; });
 
   const budgets = [];
   // Model runCascade faithfully: a non-positive budget yields an engine-less
@@ -283,7 +294,7 @@ test('runInputJob: pages routed past the job deadline are errors, not empty succ
     };
   };
 
-  const jobId = 'input-deadline-' + realNow();
+  const jobId = 'input-deadline-' + Date.now();
   jobs.create(jobId, { model_id: 'cascade:balanced' });
 
   await runJob(jobId, {
@@ -291,7 +302,7 @@ test('runInputJob: pages routed past the job deadline are errors, not empty succ
     buffer: TIFF, mimeType: 'image/tiff', mode: 'quality',
     apiKey: null, preset: undefined, requestId: 'input-req-deadline',
   });
-  Date.now = realNow;
+  clock.monotonicMs = realMono;
   await flush();
 
   const job = jobs.get(jobId);
