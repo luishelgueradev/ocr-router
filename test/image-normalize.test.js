@@ -350,6 +350,110 @@ test('normalizeToFrames: an ispe box ending exactly at the buffer end is still r
   );
 });
 
+// G-2 — the scan accepted a box ONLY when its 32-bit size field read exactly 20,
+// so the other legal ISO-BMFF size encodings walked straight past the pixel cap
+// while libheif still parsed them and sized its framebuffer from them. Build the
+// same 30000x30000 declaration through each encoding; every one must be caught.
+const OVER_CAP_DIM = Buffer.from([0, 0, 0x75, 0x30]); // 30000
+
+test('assertHeicWithinCap: a 64-bit extended ispe box does not bypass the pixel cap (G-2)', async () => {
+  // size == 1 means "the real size is the 8-byte largesize that follows the
+  // type", which pushes the payload 8 bytes further out than the 32-bit form.
+  const box64 = Buffer.concat([
+    Buffer.from([0, 0, 0, 1]),                          // size == 1 → extended
+    Buffer.from('ispe', 'ascii'),
+    Buffer.from([0, 0, 0, 0, 0, 0, 0, 28]),             // largesize = 28
+    Buffer.alloc(4, 0),                                  // version + flags
+    OVER_CAP_DIM,                                        // width  30000
+    OVER_CAP_DIM,                                        // height 30000
+  ]);
+  assert.equal(box64.length, 28, 'a complete 64-bit ispe box');
+
+  await assert.rejects(
+    () => normalizeToFrames(box64, 'image/heic', { maxPixels: CAPS.MAX_OUTPUT_PIXELS, maxDim: 5000 }),
+    (err) => {
+      assert.equal(err.code, 'image_pixel_cap_exceeded', 'the 64-bit box is read, not skipped');
+      assert.equal(err.status, 413);
+      assert.equal(err.actual, 30000 * 30000);
+      return true;
+    },
+  );
+});
+
+test('assertHeicWithinCap: a size==0 (to-end-of-file) ispe box does not bypass the pixel cap (G-2)', async () => {
+  // size == 0 means "this box runs to EOF" — legal for the last box in a file.
+  // The payload starts right after the type, as in the 32-bit form.
+  const box0 = Buffer.concat([
+    Buffer.from([0, 0, 0, 0]),                           // size == 0 → to EOF
+    Buffer.from('ispe', 'ascii'),
+    Buffer.alloc(4, 0),                                   // version + flags
+    OVER_CAP_DIM,
+    OVER_CAP_DIM,
+  ]);
+
+  await assert.rejects(
+    () => normalizeToFrames(box0, 'image/heic', { maxPixels: CAPS.MAX_OUTPUT_PIXELS, maxDim: 5000 }),
+    (err) => {
+      assert.equal(err.code, 'image_pixel_cap_exceeded', 'the to-EOF box is read, not skipped');
+      assert.equal(err.status, 413);
+      return true;
+    },
+  );
+});
+
+test('assertHeicWithinCap: an over-cap image is caught whichever box encoding declares it (G-2 matrix)', () => {
+  // Direct unit assertion on the guard, so a failure points at the scan rather
+  // than at the decoder behind it.
+  const { assertHeicWithinCap } = require('../lib/v1/input/image-normalize.js');
+  const cap = 25_000_000;
+
+  const encodings = {
+    '32-bit size=20': Buffer.concat([
+      Buffer.from([0, 0, 0, 20]), Buffer.from('ispe', 'ascii'),
+      Buffer.alloc(4, 0), OVER_CAP_DIM, OVER_CAP_DIM,
+    ]),
+    '64-bit size=1': Buffer.concat([
+      Buffer.from([0, 0, 0, 1]), Buffer.from('ispe', 'ascii'),
+      Buffer.from([0, 0, 0, 0, 0, 0, 0, 28]),
+      Buffer.alloc(4, 0), OVER_CAP_DIM, OVER_CAP_DIM,
+    ]),
+    'size=0 to EOF': Buffer.concat([
+      Buffer.from([0, 0, 0, 0]), Buffer.from('ispe', 'ascii'),
+      Buffer.alloc(4, 0), OVER_CAP_DIM, OVER_CAP_DIM,
+    ]),
+    'oversized 32-bit box (trailing data)': Buffer.concat([
+      Buffer.from([0, 0, 0, 40]), Buffer.from('ispe', 'ascii'),
+      Buffer.alloc(4, 0), OVER_CAP_DIM, OVER_CAP_DIM, Buffer.alloc(20, 0),
+    ]),
+  };
+
+  for (const [name, buf] of Object.entries(encodings)) {
+    assert.throws(
+      () => assertHeicWithinCap(buf, cap),
+      (err) => err.code === 'image_pixel_cap_exceeded' && err.status === 413,
+      `${name} must not bypass the pixel cap`,
+    );
+  }
+});
+
+test('assertHeicWithinCap: a within-cap declaration still passes on every encoding (no false rejections)', () => {
+  const { assertHeicWithinCap } = require('../lib/v1/input/image-normalize.js');
+  const small = Buffer.from([0, 0, 0x03, 0xE8]); // 1000
+
+  const ok32 = Buffer.concat([
+    Buffer.from([0, 0, 0, 20]), Buffer.from('ispe', 'ascii'),
+    Buffer.alloc(4, 0), small, small,
+  ]);
+  const ok64 = Buffer.concat([
+    Buffer.from([0, 0, 0, 1]), Buffer.from('ispe', 'ascii'),
+    Buffer.from([0, 0, 0, 0, 0, 0, 0, 28]),
+    Buffer.alloc(4, 0), small, small,
+  ]);
+
+  assert.doesNotThrow(() => assertHeicWithinCap(ok32, 25_000_000), '1000x1000 is well under the cap');
+  assert.doesNotThrow(() => assertHeicWithinCap(ok64, 25_000_000), 'and the wider scan did not start over-rejecting');
+});
+
 test('normalizeToFrames: HEIC → single normalized PNG (host-asserted if a real HEIC fixture exists, else Docker smoke A5)', async (t) => {
   // heic-convert is WASM and decodes on host, but producing a real HEIC on the
   // host is impractical (no host encoder), so this is skip-guarded on the

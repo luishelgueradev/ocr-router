@@ -58,6 +58,28 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    # G-2 — a REAL memory ceiling for the container.
+    #
+    # The in-process decoders (heic-convert/libheif WASM, @vingle/bmp-js) size
+    # their allocation from attacker-controlled header fields, so they are
+    # guarded by header pre-checks in lib/v1/input/image-normalize.js. Those
+    # guards are byte scans, not parsers: they fail OPEN on anything they do not
+    # recognize, and their documented residual is explicitly "bounded by the
+    # container's own memory limit". That limit did not exist — neither compose
+    # nor the Dockerfile set one — so the fallback the code leaned on was
+    # fiction and a decode bomb could take the whole VPS down, not just the
+    # container.
+    #
+    # `--max-old-space-size` is NOT a substitute here: WASM linear memory
+    # (libheif) lives outside V8's old space, so a heap flag would not bound the
+    # exact allocation this is defending against. A cgroup limit bounds all of
+    # it. memswap_limit pinned to the same value denies swap, so the ceiling is
+    # enforced rather than absorbed by paging on a small VPS.
+    #
+    # Must stay comfortably above the 768MB ulimit the rasterization subprocess
+    # sandbox grants each pdftoppm child (03-07 risk-flag A1) plus the Node heap.
+    mem_limit: ${APP_MEM_LIMIT:-1g}
+    memswap_limit: ${APP_MEM_LIMIT:-1g}
     # D-12 — 35s drain + 5s buffer before Docker SIGKILL.
     stop_grace_period: 40s
     networks:
