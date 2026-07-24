@@ -1,0 +1,69 @@
+# Caddyfile.tunnel — ocr-router behind a Cloudflare Tunnel (home/WSL, no VPS)
+#
+# SAME security perimeter as ./Caddyfile: default-deny, only /v1/* reaches the
+# app, everything else (/, /api/*, /assets/*, /favicon.ico) 404s at the proxy —
+# so the admin panel is NEVER exposed through the tunnel. The ONLY difference is
+# the site address: plain HTTP on :80 instead of the {$DOMAIN} auto-HTTPS block.
+#
+# WHY :80 AND NO ACME: a Cloudflare Tunnel terminates TLS at Cloudflare's edge
+# and forwards cleartext HTTP to this proxy over the tunnel. Running Caddy's own
+# Let's Encrypt here would be wrong (double TLS, and the ACME challenge cannot
+# complete because there is no public inbound 80/443 on a home connection). The
+# public hostname's certificate is Cloudflare's; Caddy just does path filtering.
+#
+# The Cloudflare Tunnel public hostname (set in the Zero Trust dashboard) must
+# point at THIS proxy — service URL http://caddy:80 — NOT at app:3000 directly,
+# because app:3000 also serves the unauthenticated admin panel (/, /api/*).
+
+:80 {
+	log {
+		output stdout
+		format json
+	}
+
+	# /v1/health — public liveness endpoint (no bearer auth).
+	handle /v1/health {
+		reverse_proxy app:3000 {
+			transport http {
+				response_header_timeout 3s
+				dial_timeout 2s
+			}
+		}
+	}
+
+	# /v1/ocr — POST returns 202 fast (dispatcher only).
+	handle /v1/ocr {
+		reverse_proxy app:3000 {
+			transport http {
+				response_header_timeout 10s
+				dial_timeout 2s
+			}
+		}
+	}
+
+	# /v1/jobs/* — polling; reads from lru-cache, sub-millisecond.
+	handle /v1/jobs/* {
+		reverse_proxy app:3000 {
+			transport http {
+				response_header_timeout 5s
+				dial_timeout 2s
+			}
+		}
+	}
+
+	# /v1/* — catch-all for /v1/models and any future /v1/* sub-route.
+	handle /v1/* {
+		reverse_proxy app:3000 {
+			transport http {
+				response_header_timeout 10s
+				dial_timeout 2s
+			}
+		}
+	}
+
+	# DEFAULT-DENY — anything not matched above returns 404 publicly. This is
+	# what keeps the admin panel (/api/*, /) off the tunnel.
+	handle {
+		error 404
+	}
+}

@@ -1,0 +1,97 @@
+# docker-compose.tunnel.yml — ocr-router on a home box (WSL) behind a
+# Cloudflare Tunnel. Self-contained alternative to the VPS+public-HTTPS stack in
+# docker-compose.yml (which binds 80/443 and needs a Tailscale IP — neither of
+# which a residential/WSL box has).
+#
+# Topology:
+#   internet ─TLS→ Cloudflare edge ─tunnel→ cloudflared ─http→ caddy:80 ─/v1→ app:3000
+#
+#   - cloudflared : holds the tunnel (token from the Zero Trust dashboard). No
+#                   inbound ports on your machine — it dials OUT to Cloudflare.
+#   - caddy       : path filter (Caddyfile.tunnel) — ONLY /v1/* is forwarded;
+#                   the admin panel is 404 at the proxy, so the tunnel can never
+#                   reach it. Not published to the host.
+#   - app         : the API + worker. Admin panel bound to 127.0.0.1 ONLY, so it
+#                   is reachable from this machine but never from the tunnel or
+#                   the LAN.
+#
+# ONE-TIME SETUP (Cloudflare Zero Trust dashboard — same as your other tunnels):
+#   1. Networks → Tunnels → Create a tunnel → Cloudflared → name it "ocr".
+#   2. Copy the tunnel TOKEN → put it in .env as TUNNEL_TOKEN=... (gitignored).
+#   3. Add a Public Hostname:
+#        Subdomain: ocr   Domain: luishelguera.dev
+#        Service:  HTTP   URL: caddy:80
+#      (Cloudflare creates the CNAME ocr.luishelguera.dev → the tunnel for you.)
+#
+# RUN:  docker compose -f docker-compose.tunnel.yml up -d --build
+# LOGS: docker compose -f docker-compose.tunnel.yml logs -f cloudflared
+# STOP: docker compose -f docker-compose.tunnel.yml down
+
+services:
+
+  app:
+    container_name: ocr-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ocr-router:latest
+    restart: unless-stopped
+    env_file: .env
+    # NODE_ENV=development ONLY to skip the TAILSCALE_IP bind guard, which is a
+    # VPS concept. It does NOT weaken the other fail-closed guards: the
+    # API_TOKEN placeholder guard and the zero-engine guard still run. On this
+    # box the 127.0.0.1 bind below is the admin trust perimeter (the home-box
+    # equivalent of the tailnet), and the tunnel only ever sees /v1 via Caddy.
+    environment:
+      - NODE_ENV=development
+    # Admin panel reachable ONLY from this machine's localhost — never the LAN,
+    # never the tunnel. (Windows reaches it at http://localhost:8780 too, since
+    # WSL2 forwards localhost.)
+    ports:
+      - "127.0.0.1:8780:3000"
+    # G-2 — real memory ceiling for the in-process HEIC/BMP decoders (see
+    # docker-compose.yml for the full rationale).
+    mem_limit: ${APP_MEM_LIMIT:-1g}
+    memswap_limit: ${APP_MEM_LIMIT:-1g}
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 40s
+    networks:
+      - ocr_net
+
+  caddy:
+    container_name: ocr-caddy
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # Tunnel Caddyfile: plain :80, /v1-only default-deny. NOT published to the
+    # host — cloudflared reaches it over ocr_net.
+    command: caddy run --config /etc/caddy/Caddyfile.tunnel --adapter caddyfile
+    volumes:
+      - ./Caddyfile.tunnel:/etc/caddy/Caddyfile.tunnel:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - ocr_net
+
+  cloudflared:
+    container_name: ocr-cloudflared
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # Token-based (remotely-managed) tunnel — the public-hostname → caddy:80
+    # mapping lives in the Zero Trust dashboard, same as your other tunnels.
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env — create the "ocr" tunnel in Cloudflare Zero Trust and paste its token}
+    environment:
+      - TUNNEL_TRANSPORT_PROTOCOL=http2
+    depends_on:
+      - caddy
+    networks:
+      - ocr_net
+
+networks:
+  ocr_net:
+    driver: bridge
