@@ -3,9 +3,11 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 
 const {
+  pdfInfo,
   pdfPageCount,
   assertPageCountWithinCap,
   renderPage,
+  computeScaleTo,
 } = require('../lib/v1/input/rasterize');
 const { CAPS } = require('../lib/v1/input/caps');
 
@@ -109,30 +111,112 @@ test('renderPage: builds the exact one-page pixel-bounded pdftoppm argv and reso
 
   // pdftoppm streams to stdout when the output-root is OMITTED (a trailing '-'
   // is written as a file '-.png' by poppler 22.12.0 — see 03-07 Docker smoke).
-  // Guard #2: explicit DPI (never poppler's silent 150 default — Pitfall 6).
+  // With no page geometry available, -r carries the DPI (never poppler's silent
+  // 150 default — Pitfall 6) and NO -scale-to is passed (CR-06: a bare
+  // -scale-to would upscale the page, not cap it).
   assert.deepEqual(sink.cmdline, [
     'pdftoppm',
     '-r', String(CAPS.RASTER_DPI),
     '-png',
     '-f', '3', '-l', '3',
     '-singlefile',
-    '-scale-to', String(CAPS.RASTER_MAX_DIM),
     '/tmp/input.pdf',
-  ], 'exact one-page pixel-bounded argv, NO output-root (stdout streaming)');
+  ], 'exact one-page argv, NO output-root (stdout streaming)');
   // Sandbox caps ride the argv as positional operands (guards #3; wall-clock backstop).
   assert.equal(sink.args[I_ULIMIT_KB], String(CAPS.ULIMIT_V_KB), 'ulimit -v address-space cap');
   assert.equal(sink.args[I_ULIMIT_CPU], String(CAPS.ULIMIT_CPU_SEC), 'ulimit -t CPU-sec cap');
 });
 
-test('renderPage: honors dpi/maxDim/page overrides in the argv', async () => {
+test('renderPage: honors dpi/page overrides in the argv', async () => {
   const sink = {};
   const spawnFn = makeFakeSpawn(Buffer.from([0x89, 0x50]), sink);
   await renderPage('/tmp/y.pdf', 5, { dpi: 300, maxDim: 4000, spawnFn });
 
   assert.deepEqual(sink.cmdline, [
     'pdftoppm', '-r', '300', '-png', '-f', '5', '-l', '5',
-    '-singlefile', '-scale-to', '4000', '/tmp/y.pdf',
-  ], 'dpi / maxDim / page overrides all applied');
+    '-singlefile', '/tmp/y.pdf',
+  ], 'dpi / page overrides applied');
+});
+
+// --- CR-06: -scale-to is a CEILING, not a target, and -r is never inert ------
+// poppler: "-scale-to number ... This option overrides the -r option." So the
+// old `-r 200 ... -scale-to 5000` rendered EVERY page at exactly 5000px on its
+// long edge and ignored RASTER_DPI entirely. These tests pin the corrected
+// contract: exactly one resolution flag, and the cap only ever scales DOWN.
+
+test('renderPage: -r and -scale-to are never passed together (they are mutually exclusive)', async () => {
+  const sink = {};
+  const spawnFn = makeFakeSpawn(Buffer.from([0x89]), sink);
+
+  // Known geometry → -scale-to only.
+  await renderPage('/tmp/a.pdf', 1, { longEdgePts: 841.89, spawnFn });
+  assert.ok(sink.cmdline.includes('-scale-to'), 'known geometry uses -scale-to');
+  assert.ok(!sink.cmdline.includes('-r'), '-r must NOT accompany -scale-to (poppler ignores it)');
+
+  // Unknown geometry → -r only.
+  await renderPage('/tmp/a.pdf', 1, { spawnFn });
+  assert.ok(sink.cmdline.includes('-r'), 'unknown geometry falls back to -r');
+  assert.ok(!sink.cmdline.includes('-scale-to'), 'no bare -scale-to: it would upscale, not cap');
+});
+
+test('renderPage: DPI is EFFECTIVE — an A4 page renders at its natural DPI size, not the cap', async () => {
+  const sink = {};
+  const spawnFn = makeFakeSpawn(Buffer.from([0x89]), sink);
+  const A4_LONG_PTS = 841.89; // 11.69 in
+
+  await renderPage('/tmp/a4.pdf', 1, { longEdgePts: A4_LONG_PTS, dpi: 200, maxDim: 5000, spawnFn });
+  const at200 = Number(sink.cmdline[sink.cmdline.indexOf('-scale-to') + 1]);
+  assert.equal(at200, Math.round((A4_LONG_PTS / 72) * 200), 'A4 @200dpi ≈ 2339px, NOT the 5000px cap');
+  assert.ok(at200 < 5000, 'a normal page is never upscaled to the ceiling');
+
+  await renderPage('/tmp/a4.pdf', 1, { longEdgePts: A4_LONG_PTS, dpi: 300, maxDim: 5000, spawnFn });
+  const at300 = Number(sink.cmdline[sink.cmdline.indexOf('-scale-to') + 1]);
+  assert.equal(at300, Math.round((A4_LONG_PTS / 72) * 300), 'A4 @300dpi ≈ 3508px');
+  assert.ok(at300 > at200, 'raising RASTER_DPI actually raises the rendered resolution');
+});
+
+test('renderPage: a hostile MediaBox is clamped to maxDim (the cap is a real ceiling)', async () => {
+  const sink = {};
+  const spawnFn = makeFakeSpawn(Buffer.from([0x89]), sink);
+  // 200 inches on the long edge — 40000px at 200dpi if uncapped.
+  await renderPage('/tmp/bomb.pdf', 1, { longEdgePts: 14400, dpi: 200, maxDim: 5000, spawnFn });
+
+  const scaleTo = Number(sink.cmdline[sink.cmdline.indexOf('-scale-to') + 1]);
+  assert.equal(scaleTo, 5000, 'an oversized page is clamped to maxDim');
+});
+
+test('computeScaleTo: clamps down, never up, and reports null for unknown geometry', () => {
+  // Natural size below the cap → the natural size (DPI honoured).
+  assert.equal(computeScaleTo(841.89, 200, 5000), 2339);
+  // Natural size above the cap → the cap (ceiling honoured).
+  assert.equal(computeScaleTo(14400, 200, 5000), 5000);
+  // Cap below the natural size at a low DPI → still the natural size.
+  assert.equal(computeScaleTo(841.89, 50, 5000), 585);
+  // Never zero (a degenerate tiny page still renders one pixel).
+  assert.equal(computeScaleTo(0.1, 1, 5000), 1);
+  // Unknown / bogus geometry → caller falls back to -r.
+  for (const bad of [undefined, null, 0, -5, NaN, Infinity, 'x']) {
+    assert.equal(computeScaleTo(bad, 200, 5000), null, `${String(bad)} → null`);
+  }
+});
+
+test('pdfInfo: parses page count AND page geometry from one pdfinfo call', async () => {
+  const uniform = await pdfInfo('/tmp/x.pdf', {
+    spawnFn: makeFakeSpawn('Pages:          3\nPage size:      595.276 x 841.89 pts (A4)\n'),
+  });
+  assert.equal(uniform.pages, 3, 'page count parsed');
+  assert.equal(uniform.longEdgePts, 841.89, 'longer side of the page box');
+
+  // poppler switches to a per-page label when the pages differ in size.
+  const varying = await pdfInfo('/tmp/x.pdf', {
+    spawnFn: makeFakeSpawn('Pages:          2\nPage    1 size: 1224 x 792 pts (landscape)\n'),
+  });
+  assert.equal(varying.longEdgePts, 1224, 'per-page "Page N size:" form also parsed');
+
+  // No geometry line at all → null, and renderPage falls back to -r.
+  const none = await pdfInfo('/tmp/x.pdf', { spawnFn: makeFakeSpawn('Pages: 1\n') });
+  assert.equal(none.longEdgePts, null, 'missing geometry is null, not a guess');
+  assert.equal(none.pages, 1, 'page count still parsed');
 });
 
 test('renderPage: passes the job signal through to the sandbox spawn', async () => {

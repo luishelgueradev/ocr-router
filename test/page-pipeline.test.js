@@ -26,17 +26,20 @@ const I_CMD = 6;
 // A fake ChildProcess: emits pdfinfo's "Pages: N" for a pdfinfo call, or a fake
 // PNG for a pdftoppm call, then closes 0. Records every command it saw so a
 // test can assert that NO rasterization ran before a cap check.
-function makePdfSpawn({ pages, renderPng, invoked }) {
+function makePdfSpawn({ pages, renderPng, invoked, argvs, pageSize = '595.276 x 841.89 pts (A4)' }) {
   return (cmd, args) => {
     const target = args[I_CMD];
     if (invoked) invoked.push(target);
+    if (argvs) argvs.push(args.slice(I_CMD));
     const cp = new EventEmitter();
     cp.stdout = new EventEmitter();
     cp.stderr = new EventEmitter();
     cp.kill = () => {};
     queueMicrotask(() => {
       if (target === 'pdfinfo') {
-        cp.stdout.emit('data', Buffer.from(`Producer: x\nPages: ${pages}\nEncrypted: no\n`));
+        cp.stdout.emit('data', Buffer.from(
+          `Producer: x\nPages: ${pages}\n${pageSize ? `Page size:      ${pageSize}\n` : ''}Encrypted: no\n`,
+        ));
       } else if (target === 'pdftoppm') {
         cp.stdout.emit('data', renderPng || Buffer.from([0x89, 0x50, 0x4e, 0x47]));
       }
@@ -111,6 +114,28 @@ test('mixed PDF: native pages skip OCR, a scanned page routes → mixed summary'
   assert.equal(out.status_rollup, 'completed');
   assert.equal(out.engine, 'mixed', 'differing engines → mixed summary');
   assert.ok(invoked.includes('pdftoppm'), 'the scanned page was rasterized');
+});
+
+// CR-06 — the page geometry read by the pre-raster pdfinfo call must reach
+// pdftoppm, so the page renders at its natural RASTER_DPI size instead of being
+// force-upscaled to the RASTER_MAX_DIM ceiling. ONE pdfinfo call serves both.
+test('scanned page renders at its natural DPI size from the pdfinfo geometry (no upscale)', async (t) => {
+  const tempDir = mkTemp();
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const argvs = [];
+  const spawnFn = makePdfSpawn({ pages: 3, argvs }); // A4 page size by default
+  const routePage = makeRoutePage(() => ({ text: 'x', engineId: 'e', provider: 'p', confidence: 0.8 }));
+
+  await runPipeline({ buffer: NATIVE_PDF, sniffedType: 'application/pdf', tempDir, routePage, spawnFn });
+
+  assert.equal(argvs.filter((a) => a[0] === 'pdfinfo').length, 1, 'exactly ONE pdfinfo call for count + geometry');
+
+  const raster = argvs.find((a) => a[0] === 'pdftoppm');
+  assert.ok(raster, 'the scanned page was rasterized');
+  const scaleTo = Number(raster[raster.indexOf('-scale-to') + 1]);
+  assert.equal(scaleTo, Math.round((841.89 / 72) * CAPS.RASTER_DPI), 'A4 renders at its natural RASTER_DPI size');
+  assert.ok(scaleTo < CAPS.RASTER_MAX_DIM, 'the page is NOT upscaled to the RASTER_MAX_DIM ceiling');
 });
 
 test('image path: multipage TIFF → one routed page per frame, order preserved', async (t) => {
