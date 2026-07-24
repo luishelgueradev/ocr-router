@@ -41,6 +41,7 @@ function withEnv(overrides, fn) {
 // The full set of caps + their research-recommended defaults.
 const EXPECTED_DEFAULTS = {
   MAX_PDF_PAGES: 50,
+  MAX_IMAGE_FRAMES: 50,
   RASTER_DPI: 200,
   MAX_OUTPUT_PIXELS: 25_000_000,
   RASTER_MAX_DIM: 5000,

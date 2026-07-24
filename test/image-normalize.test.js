@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const sharp = require('sharp');
 
-const { normalizeToFrames } = require('../lib/v1/input/image-normalize');
+const { normalizeToFrames, normalizeFrames } = require('../lib/v1/input/image-normalize');
 const { CAPS } = require('../lib/v1/input/caps');
 
 // INP-05 / INP-07 / D-04 / D-05 — image normalization to routable PNG frames.
@@ -91,6 +91,58 @@ test('normalizeToFrames: over-pixel SINGLE-frame input is rejected via limitInpu
     /pixel limit/i,
     'single-frame decode carries limitInputPixels too',
   );
+});
+
+// --- CR-02: frame-count cap + genuine one-frame-at-a-time streaming ---------
+
+test('normalizeFrames: a multi-frame input over MAX_IMAGE_FRAMES is rejected BEFORE any frame decodes', async () => {
+  // The 3-frame TIFF fixture with a cap of 2. `meta.pages` comes straight out of
+  // the file header, so this is the same class of gate MAX_PDF_PAGES applies to
+  // a PDF — without it a GIF declaring thousands of frames is a straight OOM
+  // plus thousands of paid cascade calls.
+  const it = normalizeFrames(TIFF, 'image/tiff', { ...OPTS, maxFrames: 2 });
+
+  await assert.rejects(
+    () => it.next(),
+    (err) => {
+      assert.equal(err.code, 'too_many_frames', 'typed frame-count rejection');
+      assert.equal(err.status, 413);
+      assert.equal(err.limit, 2, 'reports the cap');
+      assert.equal(err.actual, 3, 'reports the declared frame count');
+      return true;
+    },
+    'the FIRST pull rejects — nothing is decoded, nothing is routed',
+  );
+});
+
+test('normalizeFrames: exactly at the frame cap is allowed', async () => {
+  const frames = await normalizeToFrames(TIFF, 'image/tiff', { ...OPTS, maxFrames: 3 });
+  assert.equal(frames.length, 3, '3 frames at a cap of 3 is fine');
+});
+
+test('normalizeFrames: streams one frame at a time (frames decode lazily, not up front)', async () => {
+  // The CR-02 memory property: pulling ONE frame must not have decoded the rest.
+  // A generator that eagerly built the whole array could not satisfy this.
+  const it = normalizeFrames(TIFF, 'image/tiff', OPTS);
+
+  const first = await it.next();
+  assert.ok(Buffer.isBuffer(first.value), 'first pull yields one PNG buffer');
+  assert.equal(first.done, false);
+
+  // Abandon the stream after one frame — the remaining frames were never
+  // decoded, which is the whole point of pulling instead of collecting.
+  await it.return();
+
+  const rest = await it.next();
+  assert.equal(rest.done, true, 'the generator is finished; no frames were buffered behind it');
+});
+
+test('normalizeFrames: single-frame types yield exactly one frame', async () => {
+  const png = await sharp({ create: { width: 20, height: 20, channels: 3, background: { r: 5, g: 5, b: 5 } } })
+    .png().toBuffer();
+  const seen = [];
+  for await (const f of normalizeFrames(png, 'image/png', OPTS)) seen.push(f);
+  assert.equal(seen.length, 1, 'a plain PNG is a one-frame stream');
 });
 
 test('normalizeToFrames: an unknown sniffed type throws a typed error', async () => {
