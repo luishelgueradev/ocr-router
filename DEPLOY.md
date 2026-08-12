@@ -51,6 +51,8 @@ Archivos por modo:
 | `tunnel` | `docker-compose.tunnel.yml` | `Caddyfile.tunnel` (`:80` plano) | Cloudflare Tunnel → `caddy:80` |
 | `vps` | `docker-compose.yml` | `Caddyfile` (`{$DOMAIN}` con ACME) | Caddy público 80/443 |
 
+**Por qué el modo tunnel corre con `NODE_ENV=development`.** Es a propósito y está acotado: ese valor sólo desactiva el guard de `TAILSCALE_IP` en `server.js`, que es un concepto de VPS y no aplica en una máquina de casa. Los demás guards fail-closed siguen activos (placeholder de `API_TOKEN`, cero-motores). En ese modo el perímetro de confianza del panel es el bind a `127.0.0.1:8780`, y el túnel sólo ve `/v1` porque pasa por Caddy.
+
 ## Variables de entorno
 
 Se arman en `.env` (nunca en el repo; `chmod 600`). Base en `.env.example`.
@@ -96,13 +98,22 @@ Resultado: `https://ocr.tudominio.dev/v1/*` público; `/` y `/api/*` → 404. Pa
 cd /opt/luishelgueradev/ocr-router
 CF=docker-compose.tunnel.yml   # o docker-compose.yml en modo vps
 
-docker compose -f $CF logs -f            # logs
+docker compose -f $CF logs -f            # logs (todo el stack)
+docker compose -f $CF logs -f app        # logs de la API — el servicio es 'app', no 'ocr-app'
 docker compose -f $CF ps                 # estado
 docker compose -f $CF restart app        # reiniciar la app
 docker compose -f $CF down               # detener
 docker compose -f $CF up -d --build      # actualizar tras un git pull
-curl -s http://localhost:8780/v1/health  # health local
 ```
+
+Health local — el puerto `8780` se bindea distinto según el modo, así que la URL cambia:
+
+```bash
+curl -s http://localhost:8780/v1/health          # modo tunnel (bind 127.0.0.1)
+curl -s http://$TAILSCALE_IP:8780/v1/health      # modo vps    (bind a la IP del tailnet)
+```
+
+> **Nunca `docker compose down -v` en modo vps.** El flag `-v` borra el volumen `caddy_data`, donde viven los certificados de Let's Encrypt. Reemitirlos pega contra el límite de 5 certs por semana por dominio.
 
 ## Actualización
 

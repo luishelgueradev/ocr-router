@@ -150,15 +150,28 @@ fi
 
 # -- 4. Clonar ---------------------------------------------------------------
 info "Clonando $REPO_URL ..."
-if ! git clone --quiet "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
-  # Repo privado → intentar via gh
-  if have gh || ensure_cmd gh; then
-    gh auth status >/dev/null 2>&1 || { [ -n "$TTY" ] && gh auth login --hostname github.com --git-protocol https < "$TTY" || error "Repo privado sin auth. Corre 'gh auth login' o pasa GH_TOKEN."; }
-    gh auth setup-git >/dev/null 2>&1 || true
-    git clone --quiet "$REPO_URL" "$INSTALL_DIR" || error "No pude clonar $REPO_URL (verifica que exista y tengas acceso)."
-  else
-    error "No pude clonar $REPO_URL. Verifica que el repo exista y sea accesible."
+# GIT_TERMINAL_PROMPT=0 evita que git se cuelgue pidiendo usuario/password si el
+# repo resultara privado — ese caso lo maneja el bloque de abajo con gh.
+if ! GIT_TERMINAL_PROMPT=0 git clone --quiet "$REPO_URL" "$INSTALL_DIR" 2>/dev/null; then
+  # Distinguir "repo privado" de "fallo de red/disco": si un ls-remote anonimo
+  # funciona, el repo es accesible y el problema es otro — no tiene sentido
+  # mandar al usuario por el flujo de autenticacion de GitHub.
+  if GIT_TERMINAL_PROMPT=0 git ls-remote "$REPO_URL" >/dev/null 2>&1; then
+    error "No pude clonar $REPO_URL aunque el repo es accesible. Revisa red, espacio en disco y permisos sobre $INSTALL_DIR."
   fi
+  info "El repo parece privado — resolviendo autenticacion con GitHub CLI..."
+  ensure_cmd gh
+  if ! gh auth status >/dev/null 2>&1; then
+    if [ -n "${GH_TOKEN:-}${GITHUB_TOKEN:-}" ]; then
+      echo "${GH_TOKEN:-$GITHUB_TOKEN}" | gh auth login --with-token || error "El token de GitHub no fue aceptado."
+    elif [ -n "$TTY" ]; then
+      gh auth login --hostname github.com --git-protocol https < "$TTY" || error "Login de GitHub fallido."
+    else
+      error "Repo privado sin auth y sin terminal. Pasa GH_TOKEN=... o corre 'gh auth login' antes."
+    fi
+  fi
+  gh auth setup-git >/dev/null 2>&1 || true
+  git clone --quiet "$REPO_URL" "$INSTALL_DIR" || error "No pude clonar $REPO_URL (verifica que exista y tengas acceso)."
 fi
 cd "$INSTALL_DIR"
 ok "Repo en $INSTALL_DIR"
@@ -255,7 +268,8 @@ while [ $RETRIES -lt $MAX_RETRIES ]; do
 done
 if [ -z "$HEALTHY" ]; then
   warn "ocr-app no llego a 'healthy' en $((MAX_RETRIES*2))s. Ultimos logs:"
-  compose -f "$COMPOSE_FILE" logs --tail 40 ocr-app || true
+  # OJO: el servicio de compose se llama 'app' (ocr-app es el container_name).
+  compose -f "$COMPOSE_FILE" logs --tail 40 app || true
   error "Health check fallido. Revisa .env (claves de proveedor) y los logs."
 fi
 ok "ocr-app healthy."
@@ -285,5 +299,14 @@ echo "  Logs   : (cd $INSTALL_DIR && docker compose -f $COMPOSE_FILE logs -f)"
 echo "  Estado : (cd $INSTALL_DIR && docker compose -f $COMPOSE_FILE ps)"
 echo "  Parar  : (cd $INSTALL_DIR && docker compose -f $COMPOSE_FILE down)"
 echo ""
-echo "  Probar:  curl -s https://<host>/v1/health   (o http://localhost:8780/v1/health)"
+# El puerto 8780 se bindea distinto segun el modo: 127.0.0.1 en tunnel,
+# ${TAILSCALE_IP} en vps (nunca 0.0.0.0). Mostrar la URL que realmente aplica.
+if [ "$DEPLOY_MODE" = "tunnel" ]; then
+  echo "  Probar : curl -s http://localhost:8780/v1/health   (o https://<tu-hostname-del-tunel>/v1/health)"
+else
+  echo "  Probar : curl -s http://${TAILSCALE_IP}:8780/v1/health   (o https://${DOMAIN}/v1/health)"
+  echo ""
+  echo -e "  ${YELLOW}NO uses 'docker compose down -v'${NC}: borra el volumen caddy_data con los"
+  echo "  certificados de Let's Encrypt (reemitir pega contra el limite de 5 certs/semana)."
+fi
 echo ""
