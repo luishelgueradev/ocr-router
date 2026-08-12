@@ -155,7 +155,7 @@ Todas las rutas `/v1/*` (excepto `/v1/health`) requieren `Authorization: Bearer 
 |--------|------|-------------|
 | POST | `/v1/ocr` | Sube un archivo (multipart, campo `file`) → `202 { job_id, status_url }`. |
 | GET | `/v1/jobs/:id` | Pollea el job → terminal `succeeded` / `failed` + `result`. |
-| GET | `/v1/models` | Lista los motores configurados, sus `modes_supported` y `supports_structured`. |
+| GET | `/v1/models` | Devuelve el **catálogo completo** de motores (`modes_supported`, `default_mode`, `supports_structured`) más los perfiles disponibles con la cadena de motores de cada uno. Lista el catálogo entero, tenga o no configurada la API key del proveedor. |
 | GET | `/v1/health` | Liveness sin auth. |
 
 ### POST `/v1/ocr` — campos (multipart)
@@ -163,9 +163,9 @@ Todas las rutas `/v1/*` (excepto `/v1/health`) requieren `Authorization: Bearer 
 | Campo | Descripción |
 |-------|-------------|
 | `file` | El documento. Tipo detectado por magic-byte (nunca el `Content-Type` del cliente). |
-| `model` | *(opcional)* fuerza un motor específico (bypass de la cascada). |
-| `profile` | *(opcional)* `fast` / `balanced` / `quality`. |
-| `mode` | *(opcional)* `structured` para extracción JSON validada. |
+| `model` | *(opcional)* fuerza un motor específico (bypass de la cascada, un solo intento). Un motor cuyo proveedor no tenga API key configurada ⇒ `422` antes de encolar. |
+| `profile` | *(opcional)* `fast` / `balanced` / `quality`. Default: `balanced`. Un perfil desconocido ⇒ `422`. |
+| `mode` | *(opcional)* `speed` / `quality` / `structured`. Default: `quality`. Con `model` forzado se valida contra el `modes_supported` de ese motor (⇒ `422` si no lo admite); en la ruta de cascada es informativo, porque los presets por motor los resuelve el runner. |
 | `schema` | *(con `mode=structured`)* JSON Schema (`type: object`) al que ajustar la salida. |
 
 Formatos admitidos: **PNG, JPEG, WebP, PDF (nativo y escaneado), TIFF, HEIC, BMP, GIF**. Un upload sin `Content-Type` preciso (`application/octet-stream`) también se acepta y se decide por sniff. Respuestas: sobre-tamaño ⇒ `413`; formato desconocido/spoofeado ⇒ `422`; cola llena ⇒ `503 server_busy` + `Retry-After`; sin token / token inválido ⇒ `401`.
@@ -184,11 +184,12 @@ docker compose -f docker-compose.tunnel.yml up -d --build
 # Modo vps (servidor público)
 docker compose up -d --build
 # Logs / estado / parar
-docker compose -f <compose> logs -f
+docker compose -f <compose> logs -f        # todo el stack
+docker compose -f <compose> logs -f app    # solo la API (el servicio es 'app')
 docker compose -f <compose> down
 ```
 
-Las variables se leen de `.env` (ver Configuración).
+Las variables se leen de `.env` (ver Configuración). En modo vps **no usar `down -v`**: borra el volumen `caddy_data` con los certificados de Let's Encrypt, y reemitirlos pega contra el límite de 5 certs por semana.
 
 ## Deploy
 
@@ -230,4 +231,8 @@ npm run audit   # npm audit --omit=dev --audit-level=high  → falla en high/cri
 
 ## Estado del proyecto
 
-**Milestone v1.0 — completo (4 de 4 fases).** Foundation (API + auth + deploy), Cascade Router (escalonamiento automático + trazabilidad), Input Pipeline (PDF nativo/escaneado + normalización multi-formato + resultados por página) y Structured Extraction (`mode=structured`). Validado con suite automatizada verde y UAT en vivo end-to-end (OCR real por ocr.space y extracción estructurada real por Ollama visión). Último avance: 2026-07-24.
+**Milestone v1.0 — completo (4 de 4 fases, 15 de 15 planes).** Foundation (API + auth + deploy), Cascade Router (escalonamiento automático + trazabilidad), Input Pipeline (PDF nativo/escaneado + normalización multi-formato + resultados por página) y Structured Extraction (`mode=structured`). Validado con suite automatizada verde y UAT en vivo end-to-end (OCR real por ocr.space y extracción estructurada real por Ollama visión). Último avance: 2026-07-24.
+
+Quedan seguimientos diferidos, no bloqueantes, en [PENDING-ISSUES.md](PENDING-ISSUES.md) — el más sustantivo es calibrar el piso de renormalización de la heurística de cascada con claves reales; le siguen endurecer contra ReDoS vía `pattern` en el esquema del cliente, `mode=structured` multipágina y su UI en el panel admin.
+
+> Los tags de modelo de Ollama Cloud se retiran cada tanto (el UAT en vivo encontró dos muertos con `410`). Si un tier LLM empieza a fallar, verificar los tags vivos y actualizar `lib/models.js` — ver Troubleshooting en [DEPLOY.md](DEPLOY.md).
