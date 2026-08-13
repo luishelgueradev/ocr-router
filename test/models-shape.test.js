@@ -34,7 +34,7 @@ test('CATALOG-02: every Ollama model has max_bytes and a modes block', () => {
       const opts = m.modes[mode].options;
       assert.ok(typeof opts.num_ctx === 'number' && opts.num_ctx > 0, `${m.id} modes.${mode}.options.num_ctx required`);
       assert.ok(typeof opts.num_predict === 'number' && opts.num_predict > 0, `${m.id} modes.${mode}.options.num_predict required`);
-      assert.ok(['short', 'full'].includes(m.modes[mode].prompt), `${m.id} modes.${mode}.prompt must be short or full`);
+      assert.ok(['short', 'full', 'describe'].includes(m.modes[mode].prompt), `${m.id} modes.${mode}.prompt must be short, full or describe`);
     }
   }
 });
