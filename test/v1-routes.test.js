@@ -351,6 +351,99 @@ test('MODE-04: ocrspace + mode=speed → 422 (speed not in modes_supported)', as
 });
 
 // ---------------------------------------------------------------------------
+// MODE-05: la ruta de CASCADA (sin `model`) también valida el modo
+//
+// El defecto que cierran: en cascada el modo es "informativo", y eso se había
+// vuelto "cualquier string entra". Un modo desconocido devolvía 202, encolaba
+// un job real, gastaba una llamada a ocr.space más una a Ollama Cloud, y
+// entregaba texto plano. El cliente que pidió `structured` con un typo recibe
+// una respuesta plausible y se entera al parsear — o no se entera.
+// ---------------------------------------------------------------------------
+
+test('MODE-05: modo desconocido SIN model → 422 field=mode (no encola)', async (t) => {
+  const app = makeApp();
+  const { server, url } = await listen(app);
+  t.after(() => new Promise(r => server.close(r)));
+
+  const { body, contentType } = buildMultipart({
+    buffer: pngBuffer(),
+    mimetype: 'image/png',
+    mode: 'ludicrous',
+  });
+  const res = await fetch(`${url}/v1/ocr`, {
+    method: 'POST',
+    headers: { 'content-type': contentType },
+    body,
+  });
+  assert.equal(res.status, 422);
+  const payload = await res.json();
+  assert.equal(payload.error, 'invalid_parameter');
+  assert.equal(payload.field, 'mode');
+  assert.equal(payload.job_id, undefined, 'un modo inválido no debe crear un job');
+});
+
+test('MODE-05: `structrued` mal tipeado → 422, no un OCR plano disfrazado', async (t) => {
+  // El caso real reproducido contra el servicio desplegado: 202 + job_id, y el
+  // cliente recibía texto libre donde esperaba JSON estructurado.
+  const app = makeApp();
+  const { server, url } = await listen(app);
+  t.after(() => new Promise(r => server.close(r)));
+
+  const { body, contentType } = buildMultipart({
+    buffer: pngBuffer(),
+    mimetype: 'image/png',
+    mode: 'structrued',
+  });
+  const res = await fetch(`${url}/v1/ocr`, {
+    method: 'POST',
+    headers: { 'content-type': contentType },
+    body,
+  });
+  assert.equal(res.status, 422);
+  assert.equal((await res.json()).field, 'mode');
+});
+
+test('MODE-05: `__proto__` como modo → 422 (allowlist sin prototipo)', async (t) => {
+  // La allowlist es Object.create(null) + Object.hasOwn, igual que el guard de
+  // `profile`: una clave heredada no puede hacerse pasar por modo válido.
+  const app = makeApp();
+  const { server, url } = await listen(app);
+  t.after(() => new Promise(r => server.close(r)));
+
+  const { body, contentType } = buildMultipart({
+    buffer: pngBuffer(),
+    mimetype: 'image/png',
+    mode: '__proto__',
+  });
+  const res = await fetch(`${url}/v1/ocr`, {
+    method: 'POST',
+    headers: { 'content-type': contentType },
+    body,
+  });
+  assert.equal(res.status, 422);
+  assert.equal((await res.json()).field, 'mode');
+});
+
+test('MODE-05: un modo del catálogo SIN model sigue dando 202 (la cascada no se rompe)', async (t) => {
+  const app = makeApp();
+  const { server, url } = await listen(app);
+  t.after(() => new Promise(r => server.close(r)));
+
+  const { body, contentType } = buildMultipart({
+    buffer: pngBuffer(),
+    mimetype: 'image/png',
+    mode: 'speed',
+  });
+  const res = await fetch(`${url}/v1/ocr`, {
+    method: 'POST',
+    headers: { 'content-type': contentType },
+    body,
+  });
+  assert.equal(res.status, 202);
+  assert.ok((await res.json()).job_id, 'la ruta de cascada debe seguir encolando');
+});
+
+// ---------------------------------------------------------------------------
 // VAL-01: payload > MAX_UPLOAD_BYTES → 413 payload_too_large
 // ---------------------------------------------------------------------------
 
