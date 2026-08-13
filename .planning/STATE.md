@@ -39,7 +39,7 @@ Also this session: fixed the octet-stream upload gate (unlabeled binary now reac
 A Cloudflare-Tunnel deploy stack was added for the home/WSL topology (docker-compose.tunnel.yml + Caddyfile.tunnel, only /v1 public). Live evidence: real OCR and real structured extraction both succeed through the public URL; the admin panel is correctly 404 there.
 
 Still open (deferred, non-blocking): Human-Verification #3 (Phase 3 caps cross-validation policy); the 5 Info findings in `03-REVIEW.md`; and the Phase-4 follow-ups in `PENDING-ISSUES.md` (ReDoS-via-pattern hardening, multi-page structured, admin-panel structured UI).
-Last activity: 2026-07-24
+Last activity: 2026-08-13 - Completed quick task 260813-5r3: modo `describe` para modelos de visión
 
 Progress: [██████████] 100%
 
@@ -130,6 +130,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260724-64d | Close Phase 3 verification gaps (G-1, G-2, HVR#1) + monotonic clock defect | 2026-07-24 | 65568d1 | [260724-64d-phase3-gaps-and-monotonic-clock](./quick/260724-64d-phase3-gaps-and-monotonic-clock/) |
+| 260813-5r3 | Modo `describe` (descripción de imágenes) en los 3 motores de visión | 2026-08-13 | b5bd25a | [260813-5r3-modo-describe-para-modelos-de-vision](./quick/260813-5r3-modo-describe-para-modelos-de-vision/) |
 
 ## Deferred Items
 
